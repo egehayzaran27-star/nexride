@@ -1,0 +1,28 @@
+services:
+  app:
+    build: .
+    container_name: taxi-sqlite-app
+    ports:
+      - "3001:3001"
+    volumes:
+      - .:/app
+      - node_modules_data:/app/node_modules
+      - ./sqlite.db:/app/sqlite.db
+    environment:
+      - PORT=3001
+      - MONGO_URI=mongodb://mongodb:27017/taxi-app
+    depends_on:
+      - mongodb
+    command: npm run dev
+
+  mongodb:
+    image: mongo:latest
+    container_name: taxi-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+volumes:
+  node_modules_data:
+  mongo_data:

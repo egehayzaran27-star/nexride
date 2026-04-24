@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexRide | Akıllı Taksi Çözümü</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="/store.js"></script>
+</head>
+
+<body>
+    <div id="loading" class="loading-overlay">
+        <div class="spinner"></div>
+    </div>
+
+    <div class="app-container" style="padding-top: 100px;">
+        <!-- Auth Section -->
+        <div id="authSection" class="card fade-in">
+            <h1 id="authTitle">Hoş Geldiniz</h1>
+            <div class="tabs"
+                style="display: flex; gap: 10px; margin-bottom: 20px; background: rgba(0,0,0,0.2); padding: 5px; border-radius: 12px;">
+                <button id="loginTab" class="btn btn-primary" style="flex: 1;" onclick="switchTab('login')">Giriş
+                    Yap</button>
+                <button id="registerTab" class="btn btn-secondary" style="flex: 1;"
+                    onclick="switchTab('register')">Kayıt Ol</button>
+            </div>
+
+            <form id="loginForm">
+                <div class="form-group">
+                    <label>E-posta</label>
+                    <input type="email" id="loginEmail" placeholder="admin@example.com" required>
+                </div>
+                <div class="form-group">
+                    <label>Şifre</label>
+                    <input type="password" id="loginPassword" placeholder="••••••••" required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">
+                    Devam Et <i data-lucide="arrow-right"></i>
+                </button>
+            </form>
+
+            <form id="registerForm" style="display: none;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="form-group">
+                        <label>Ad</label>
+                        <input type="text" id="regFirstName" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Soyad</label>
+                        <input type="text" id="regLastName" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>TC Kimlik No</label>
+                    <input type="text" id="regTc" maxlength="11" required>
+                </div>
+                <div class="form-group">
+                    <label>E-posta</label>
+                    <input type="email" id="regEmail" required>
+                </div>
+                <div class="form-group">
+                    <label>Şifre</label>
+                    <input type="password" id="regPassword" required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Hesap Oluştur</button>
+            </form>
+        </div>
+
+        <!-- Booking Section -->
+        <div id="bookingSection" style="display: none; width: 100%; max-width: 900px;" class="fade-in">
+            <div class="grid" style="display: grid; grid-template-columns: 1.8fr 1fr; gap: 20px;">
+                <div class="card" style="max-width: none;">
+                    <h2 style="display: flex; align-items: center; gap: 10px;"><i data-lucide="map-pin"></i> Nereye
+                        Gidiyoruz?</h2>
+                    <div id="map"
+                        style="height: 450px; border-radius: 15px; margin: 20px 0; border: 1px solid var(--border);">
+                    </div>
+
+                    <div class="grid"
+                        style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                        <div class="form-group">
+                            <label>Başlangıç Noktası</label>
+                            <input type="text" id="startLocation" readonly placeholder="🚕 İstasyon seçin">
+                        </div>
+                        <div class="form-group">
+                            <label>Varış Noktası</label>
+                            <input type="text" id="destLocation" readonly placeholder="📍 Haritadan seçin">
+                        </div>
+                    </div>
+
+                    <div class="grid"
+                        style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                        <div class="form-group">
+                            <label>Yolculuk Tarihi</label>
+                            <input type="date" id="bookingDateInput">
+                        </div>
+                        <div class="form-group">
+                            <label>Yolculuk Saati</label>
+                            <input type="time" id="bookingTimeInput">
+                        </div>
+                    </div>
+
+                    <div id="priceCard"
+                        style="display: none; background: linear-gradient(to right, rgba(99, 102, 241, 0.2), rgba(192, 132, 252, 0.2)); padding: 20px; border-radius: 15px; margin-bottom: 20px; border: 1px solid var(--primary);">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <div
+                                    style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">
+                                    Tahmini Ücret</div>
+                                <div id="estimatedPrice" style="font-size: 2rem; font-weight: 700; color: white;">₺0.00
+                                </div>
+                            </div>
+                            <button id="bookBtn" class="btn btn-primary"
+                                style="padding: 15px 30px; font-size: 1.1rem;">Yolculuğu Başlat <i
+                                    data-lucide="chevron-right"></i></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-info">
+                    <div class="card" style="margin-bottom: 20px;">
+                        <h3 style="display: flex; align-items: center; gap: 10px;"><i data-lucide="users"></i> Müsait
+                            Sürücüler</h3>
+                        <div id="driverList"
+                            style="margin-top: 15px; display: flex; flex-direction: column; gap: 12px;"></div>
+                    </div>
+                    <div class="card">
+                        <h3 style="display: flex; align-items: center; gap: 10px;"><i data-lucide="history"></i> Son
+                            Yolculuklar</h3>
+                        <div id="recentBookings" style="margin-top: 15px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payment Modal -->
+    <div id="paymentModal" class="modal">
+        <div class="modal-content">
+            <div
+                style="width: 80px; height: 80px; background: rgba(99, 102, 241, 0.1); border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; color: var(--primary);">
+                <i data-lucide="credit-card" style="width: 40px; height: 40px;"></i>
+            </div>
+            <h2 style="margin-bottom: 10px;">Ödeme Onayı</h2>
+            <p id="paymentText" style="color: var(--text-muted); margin-bottom: 30px;"></p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <button onclick="processPayment('Cüzdan')" class="btn btn-primary">Cüzdan (₺)</button>
+                <button onclick="processPayment('Cash')" class="btn btn-secondary">Nakit (💵)</button>
+            </div>
+            <button onclick="closeModal()" class="btn btn-danger"
+                style="width: 100%; margin-top: 15px; background: transparent;">Vazgeç</button>
+        </div>
+    </div>
+
+    <script>
+        let map, startMarker, endMarker, lastBookingId = null;
+        let selectedStation = null, selectedDistance = 0, currentPrice = 0, selectedDriverId = null;
+    function init() {
+        // Yükleme ekranını hemen gizle (hatalar olsa bile kullanıcı arayüzü görsün)
+        const loading = document.getElementById('loading');
+        if (loading) setTimeout(() => loading.classList.add('loading-hidden'), 200);
+
+        const user = Store.getUser();
+    if (user) {
+    Store.renderNavbar();
+    document.getElementById('authSection').style.display = 'none';
+    document.getElementById('bookingSection').style.display = 'block';
+
+    // Varsayılan tarih ve saat
+    const now = new Date();
+    document.getElementById('bookingDateInput').value = now.toISOString().split('T')[0];
+    document.getElementById('bookingTimeInput').value = now.toTimeString().slice(0, 5);
+
+    initMap();
+    loadDrivers();
+    loadRecentBookings();
+    } else {
+    document.getElementById('authSection').style.display = 'block';
+    document.getElementById('bookingSection').style.display = 'none';
+    }
+    lucide.createIcons();
+    }
+
+    function switchTab(type) {
+    const isLogin = type === 'login';
+    document.getElementById('loginForm').style.display = isLogin ? 'block' : 'none';
+    document.getElementById('registerForm').style.display = isLogin ? 'none' : 'block';
+    document.getElementById('authTitle').textContent = isLogin ? 'Hoş Geldiniz' : 'Yeni Kayıt';
+    document.getElementById('loginTab').className = isLogin ? 'btn btn-primary' : 'btn btn-secondary';
+    document.getElementById('registerTab').className = isLogin ? 'btn btn-secondary' : 'btn btn-primary';
+    lucide.createIcons();
+    }
+
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+    const res = await Store.api('/api/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+    const data = await res.json();
+    if (data.success) {
+    Store.setUser(data.user, data.token);
+    Store.showAlert('Giriş başarılı!', 'success');
+    setTimeout(() => window.location.href = '/menu.html', 800);
+    } else {
+    Store.showAlert(data.error, 'error');
+    }
+    });
+
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = {
+    firstName: document.getElementById('regFirstName').value,
+    lastName: document.getElementById('regLastName').value,
+    tcNo: document.getElementById('regTc').value,
+    email: document.getElementById('regEmail').value,
+    password: document.getElementById('regPassword').value
+    };
+    const res = await Store.api('/api/register', { method: 'POST', body: JSON.stringify(formData) });
+    const data = await res.json();
+    if (data.success) {
+    Store.showAlert('Kayıt başarılı! Giriş yapabilirsiniz.', 'success');
+    switchTab('login');
+    } else {
+    Store.showAlert(data.error, 'error');
+    }
+    });
+
+        function initMap() {
+            if (map) return;
+            map = L.map('map').setView([41.0082, 28.9784], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+            map.on('click', (e) => {
+                if (!startMarker) {
+                    // İlk tıklama: Başlangıç Noktası
+                    startMarker = L.marker(e.latlng, {
+                        icon: L.divIcon({
+                            className: 'start-icon',
+                            html: `<div style="background:var(--success); color:white; border-radius:50%; width:34px; height:34px; display:flex; align-items:center; justify-content:center; box-shadow:0 0 20px var(--success); border:2px solid white;">🚕</div>`
+                        })
+                    }).addTo(map);
+                    document.getElementById('startLocation').value = `${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`;
+                    Store.showAlert('Başlangıç noktası seçildi. Şimdi varış noktasını seçin.', 'success');
+                } else if (!endMarker) {
+                    // İkinci tıklama: Varış Noktası
+                    endMarker = L.marker(e.latlng, {
+                        icon: L.divIcon({
+                            className: 'end-icon',
+                            html: `<div style="background:var(--secondary); color:white; border-radius:50%; width:34px; height:34px; display:flex; align-items:center; justify-content:center; box-shadow:0 0 20px var(--secondary); border:2px solid white;">📍</div>`
+                        })
+                    }).addTo(map);
+                    document.getElementById('destLocation').value = `${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`;
+                    calculateDistance(startMarker.getLatLng().lat, startMarker.getLatLng().lng, e.latlng.lat, e.latlng.lng);
+                } else {
+                    // Üçüncü tıklama: Reset ve baştan başla
+                    map.removeLayer(startMarker);
+                    map.removeLayer(endMarker);
+                    startMarker = null;
+                    endMarker = null;
+                    document.getElementById('startLocation').value = '';
+                    document.getElementById('destLocation').value = '';
+                    document.getElementById('priceCard').style.display = 'none';
+                    Store.showAlert('Konumlar sıfırlandı. Yeni başlangıç noktası seçin.', 'info');
+                }
+            });
+        }
+
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+            selectedDistance = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            currentPrice = selectedDistance * 15 + 20;
+            document.getElementById('estimatedPrice').textContent = Store.formatCurrency(currentPrice);
+            document.getElementById('priceCard').style.display = 'block';
+        }
+
+    async function loadDrivers() {
+    const res = await Store.api('/api/drivers');
+    const drivers = await res.json();
+    document.getElementById('driverList').innerHTML = drivers.slice(0, 4).map(d => `
+    <div id="driver-${d.id}" class="driver-card" onclick="selectDriver(${d.id})"
+        style="background:var(--glass-bg); padding:12px; border-radius:12px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; cursor:pointer; transition: all 0.3s ease;">
+        <div>
+            <div style="font-weight:600; color:white;">${d.name}</div>
+            <div style="font-size:0.75rem; color:var(--text-muted);">${d.carModel} • ${d.plate}</div>
+        </div>
+        <div style="text-align:right;">
+            <div style="color:var(--star); font-size:0.9rem; font-weight:700;">★ ${d.avgScore.toFixed(1)}</div>
+            <div style="font-size:0.6rem; color:var(--success);">MÜSAİT</div>
+        </div>
+    </div>
+    `).join('');
+    }
+
+    function selectDriver(id) {
+    // Önceki seçimi temizle
+    if (selectedDriverId) {
+    const oldCard = document.getElementById(`driver-${selectedDriverId}`);
+    if (oldCard) oldCard.classList.remove('selected');
+    }
+
+    // Yeni seçimi yap
+    selectedDriverId = id;
+    const newCard = document.getElementById(`driver-${id}`);
+    if (newCard) newCard.classList.add('selected');
+    }
+
+    async function loadRecentBookings() {
+    const user = Store.getUser();
+    const res = await Store.api(`/api/my-bookings/${user.id}`);
+    const bookings = await res.json();
+    const list = document.getElementById('recentBookings');
+    if (bookings.length === 0) return list.innerHTML = '<p class="text-muted" style="font-size:0.8rem;">Yolculuk kaydı yok.</p>';
+    list.innerHTML = bookings.slice(0, 4).map(b => `
+    <div style="padding:10px 0; border-bottom:1px solid var(--border);">
+        <div style="font-weight:600; font-size:0.85rem;">${b.destination.substring(0, 25)}...</div>
+        <div
+            style="display:flex; justify-content:space-between; font-size:0.7rem; color:var(--text-muted); margin-top:4px;">
+            <span>${Store.formatDate(b.created_at)}</span>
+            <span
+                style="color:${b.status === 'Ödendi' ? 'var(--success)' : 'var(--warning)'}; font-weight:700;">${b.status.toUpperCase()}</span>
+        </div>
+    </div>
+    `).join('');
+    }
+
+    document.getElementById('bookBtn').addEventListener('click', async () => {
+    const user = Store.getUser();
+    const destination = document.getElementById('destLocation').value;
+    const date = document.getElementById('bookingDateInput').value;
+    const time = document.getElementById('bookingTimeInput').value;
+
+    if (!destination) return Store.showAlert('Lütfen haritadan bir varış noktası seçin.', 'error');
+    if (!selectedDriverId) return Store.showAlert('Lütfen bir sürücü seçin.', 'error');
+    if (!date || !time) return Store.showAlert('Lütfen tarih ve saat seçin.', 'error');
+
+    const bookingData = {
+    userId: user.id,
+    driverId: selectedDriverId,
+    destination: destination,
+    bookingDate: `${date} ${time}`,
+    price: currentPrice
+    };
+
+    const res = await Store.api('/api/bookings', {
+    method: 'POST',
+    body: JSON.stringify(bookingData)
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+    lastBookingId = data.id;
+    document.getElementById('paymentText').innerHTML = `<b>${selectedDistance.toFixed(2)} km</b> mesafe için
+    <b>${Store.formatCurrency(currentPrice)}</b> ücret belirlendi.`;
+    document.getElementById('paymentModal').style.display = 'flex';
+    lucide.createIcons();
+    }
+    });
+
+    async function processPayment(method) {
+    const user = Store.getUser();
+    const res = await Store.api('/api/wallet/pay', { method: 'POST', body: JSON.stringify({ userId: user.id, bookingId:
+    lastBookingId, method }) });
+    if (res.ok) {
+    Store.showAlert('Ödeme başarılı! Sürücü yönlendiriliyor...', 'success');
+    closeModal();
+    simulateDriverJourney();
+    loadRecentBookings();
+    } else {
+    const data = await res.json();
+    Store.showAlert(data.error, 'error');
+    if (data.error.includes('Yetersiz bakiye')) setTimeout(() => window.location.href = '/wallet.html', 1500);
+    }
+    }
+
+    function simulateDriverJourney() {
+    // Sürücü uzaklığı simülasyonu (rastgele 1-3 km arası bir mesafeden gelsin)
+    const driverDistance = (Math.random() * 2 + 1).toFixed(2);
+    const arrivalTime = Math.round(driverDistance); // 1 km = 1 dakika
+
+    Store.showAlert(`Sürücü kabul etti! ${driverDistance} km uzakta. Tahmini varış: ${arrivalTime} dakika.`, 'info');
+
+    // "Sürücü Yolda" bildirimi
+    setTimeout(() => {
+    Store.showAlert('Sürücü yolda, yaklaşıyor...', 'warning');
+    }, 3000);
+
+    // "Sürücü Yetişti" bildirimi
+    setTimeout(() => {
+    Store.showAlert('Sürücü yetişti! Kapıda sizi bekliyor.', 'success');
+
+                // Haritayı ve formu temizle
+                if (startMarker) map.removeLayer(startMarker);
+                if (endMarker) map.removeLayer(endMarker);
+                startMarker = null;
+                endMarker = null;
+                document.getElementById('startLocation').value = '';
+                document.getElementById('destLocation').value = '';
+                document.getElementById('priceCard').style.display = 'none';
+    }, arrivalTime * 10000); // Gerçek dakikayı simüle etmek için saniye bazlı (test için hızlandırılabilir)
+    }
+
+    function closeModal() { document.getElementById('paymentModal').style.display = 'none'; }
+    document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+
+</html>

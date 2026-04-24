@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexRide | Menü</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="/store.js"></script>
+</head>
+<body>
+    <div id="loading" class="loading-overlay"><div class="spinner"></div></div>
+
+    <div class="app-container" style="justify-content: center; min-height: 100vh; padding-top: 60px;">
+        <h1 style="margin-bottom: 40px; font-size: 3rem; text-align: center;">Nereye Gitmek İstersiniz?</h1>
+        
+        <div class="grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; width: 100%; max-width: 1100px;">
+            
+            <a href="/index.html" class="card text-center fade-in" style="text-decoration: none; transition: 0.4s; cursor: pointer; padding: 40px 20px;">
+                <div style="width: 80px; height: 80px; background: rgba(99, 102, 241, 0.1); border-radius: 20px; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; color: var(--primary);">
+                    <i data-lucide="car" style="width: 40px; height: 40px;"></i>
+                </div>
+                <h2>Taksi Çağır</h2>
+                <p class="text-muted">Hızlı ve güvenli yolculuk planlayın.</p>
+            </a>
+
+            <a href="/wallet.html" class="card text-center fade-in" style="text-decoration: none; transition: 0.4s; cursor: pointer; animation-delay: 0.1s; padding: 40px 20px;">
+                <div style="width: 80px; height: 80px; background: rgba(34, 197, 94, 0.1); border-radius: 20px; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; color: var(--success);">
+                    <i data-lucide="wallet" style="width: 40px; height: 40px;"></i>
+                </div>
+                <h2>Cüzdanım</h2>
+                <p class="text-muted">Bakiyenizi yönetin ve transfer yapın.</p>
+            </a>
+
+            <a href="/dashboard.html" class="card text-center fade-in" style="text-decoration: none; transition: 0.4s; cursor: pointer; animation-delay: 0.2s; padding: 40px 20px;">
+                <div style="width: 80px; height: 80px; background: rgba(168, 85, 247, 0.1); border-radius: 20px; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; color: #a855f7;">
+                    <i data-lucide="user" style="width: 40px; height: 40px;"></i>
+                </div>
+                <h2>Profil & Geçmiş</h2>
+                <p class="text-muted">Yolculuklarınızı ve bilgilerinizi görün.</p>
+            </a>
+
+        </div>
+
+        <div style="margin-top: 50px; text-align: center;">
+            <p style="color: var(--text-muted); margin-bottom: 20px;">Yardıma mı ihtiyacınız var? Destek ekibimize ulaşın.</p>
+            <button onclick="Store.logout()" class="btn btn-danger" style="padding: 12px 30px;">Güvenli Çıkış Yap <i data-lucide="log-out"></i></button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const loading = document.getElementById('loading');
+            if (loading) setTimeout(() => loading.classList.add('loading-hidden'), 200);
+
+            const user = Store.getUser();
+            if (!user) {
+                window.location.href = '/';
+                return;
+            }
+            Store.renderNavbar();
+            lucide.createIcons();
+        });
+    </script>
+
+    <style>
+        .card:hover {
+            transform: translateY(-12px) scale(1.02);
+            border-color: var(--primary);
+            background: rgba(99, 102, 241, 0.05);
+            box-shadow: 0 40px 80px -15px rgba(0, 0, 0, 0.6);
+        }
+    </style>
+</body>
+</html>

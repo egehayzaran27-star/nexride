@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ödeme Yöntemleri | Taksi Sistemi</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --bg: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg);
+            background-image: radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), radial-gradient(at 100% 100%, hsla(225,39%,20%,1) 0, transparent 50%);
+            min-height: 100vh;
+            color: var(--text);
+            padding: 20px;
+        }
+
+        nav {
+            max-width: 1000px;
+            margin: 0 auto 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 0;
+        }
+
+        .logo { font-size: 1.5rem; font-weight: 700; background: linear-gradient(to right, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-decoration: none; }
+        .nav-link { color: var(--text-muted); text-decoration: none; font-size: 0.9rem; margin-left: 20px; transition: 0.3s; }
+
+        .container { max-width: 1000px; margin: 0 auto; }
+
+        .header { margin-bottom: 2rem; }
+        .header h1 { font-size: 2rem; margin-bottom: 10px; }
+        .header p { color: var(--text-muted); }
+
+        .grid { display: grid; grid-template-columns: 1fr 400px; gap: 2rem; }
+        @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+        .card-list { display: grid; gap: 1.5rem; }
+
+        /* Virtual Card Design */
+        .v-card {
+            background: linear-gradient(135deg, #4f46e5, #06b6d4);
+            aspect-ratio: 1.58/1;
+            border-radius: 20px;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 15px 35px -10px rgba(0,0,0,0.5);
+            transition: 0.3s;
+        }
+        .v-card:hover { transform: scale(1.02); }
+        .v-card::before { content: ''; position: absolute; top: -50%; right: -50%; width: 100%; height: 100%; background: rgba(255,255,255,0.1); border-radius: 50%; }
+
+        .v-chip { width: 50px; height: 35px; background: linear-gradient(135deg, #ffd700, #ffa500); border-radius: 8px; margin-bottom: 1rem; }
+        .v-number { font-size: 1.5rem; letter-spacing: 3px; font-weight: 600; text-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+        .v-footer { display: flex; justify-content: space-between; align-items: flex-end; }
+        .v-label { font-size: 0.7rem; text-transform: uppercase; opacity: 0.8; margin-bottom: 4px; }
+        .v-value { font-size: 1rem; font-weight: 600; }
+        .v-type { font-size: 1.5rem; font-style: italic; font-weight: 800; }
+
+        /* Add Card Form */
+        .form-card { background: var(--card-bg); backdrop-filter: blur(12px); border: 1px solid var(--glass-border); padding: 2rem; border-radius: 24px; position: sticky; top: 20px; }
+        .form-group { margin-bottom: 1.25rem; }
+        label { display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px; }
+        input { width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 12px; color: white; font-family: inherit; }
+        
+        .btn { width: 100%; padding: 14px; background: var(--primary); color: white; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; transition: 0.3s; margin-top: 10px; }
+        .btn:hover { background: #4338ca; transform: translateY(-2px); }
+
+        .empty-state { text-align: center; padding: 4rem; background: var(--card-bg); border-radius: 24px; border: 2px dashed var(--glass-border); }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <a href="/" class="logo">TAKSİ</a>
+        <div>
+            <a href="/dashboard.html" class="nav-link">Geri Dön</a>
+            <a href="/wallet.html" class="nav-link">Cüzdanım</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <h1>Ödeme Yöntemleri</h1>
+            <p>Yolculuklarınızda otomatik ödeme için kartlarınızı yönetin.</p>
+        </div>
+
+        <div class="grid">
+            <div id="cardList" class="card-list">
+                <!-- Cards will be added here -->
+                <div class="v-card">
+                    <div>
+                        <div class="v-chip"></div>
+                        <div class="v-number">**** **** **** 4421</div>
+                    </div>
+                    <div class="v-footer">
+                        <div>
+                            <div class="v-label">KART SAHİBİ</div>
+                            <div class="v-value" id="cardHolder">MURAT KAYA</div>
+                        </div>
+                        <div>
+                            <div class="v-label">SKT</div>
+                            <div class="v-value">12/28</div>
+                        </div>
+                        <div class="v-type">VISA</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-card">
+                <h3 style="margin-bottom: 1.5rem">Yeni Kart Ekle</h3>
+                <form id="addCardForm">
+                    <div class="form-group">
+                        <label>Kart Üzerindeki İsim</label>
+                        <input type="text" id="holderName" placeholder="Ad Soyad" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Kart Numarası</label>
+                        <input type="text" id="cardNumber" placeholder="0000 0000 0000 0000" maxlength="19" required>
+                    </div>
+                    <div class="form-row" style="display: flex; gap: 1rem">
+                        <div class="form-group" style="flex: 1">
+                            <label>SKT</label>
+                            <input type="text" id="expiry" placeholder="AA/YY" maxlength="5" required>
+                        </div>
+                        <div class="form-group" style="flex: 1">
+                            <label>CVV</label>
+                            <input type="password" id="cvv" placeholder="***" maxlength="3" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn">KARTI KAYDET</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const currentUser = JSON.parse(localStorage.getItem('user'));
+        if (currentUser) {
+            document.getElementById('cardHolder').textContent = `${currentUser.firstName} ${currentUser.lastName}`.toUpperCase();
+        }
+
+        document.getElementById('addCardForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const holder = document.getElementById('holderName').value;
+            const number = document.getElementById('cardNumber').value;
+            const expiry = document.getElementById('expiry').value;
+            
+            const last4 = number.slice(-4);
+            
+            const cardHtml = `
+                <div class="v-card" style="background: linear-gradient(135deg, #ec4899, #8b5cf6)">
+                    <div>
+                        <div class="v-chip"></div>
+                        <div class="v-number">**** **** **** ${last4}</div>
+                    </div>
+                    <div class="v-footer">
+                        <div>
+                            <div class="v-label">KART SAHİBİ</div>
+                            <div class="v-value">${holder.toUpperCase()}</div>
+                        </div>
+                        <div>
+                            <div class="v-label">SKT</div>
+                            <div class="v-value">${expiry}</div>
+                        </div>
+                        <div class="v-type">MC</div>
+                    </div>
+                </div>
+            `;
+            
+            const list = document.getElementById('cardList');
+            list.insertAdjacentHTML('afterbegin', cardHtml);
+            
+            alert('Kartınız başarıyla eklendi!');
+            e.target.reset();
+        });
+
+        // Basic formatting for card number
+        document.getElementById('cardNumber').addEventListener('input', (e) => {
+            e.target.value = e.target.value.replace(/[^\d]/g, '').replace(/(.{4})/g, '$1 ').trim();
+        });
+    </script>
+</body>
+</html>

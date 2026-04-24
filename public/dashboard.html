@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profilim | NexRide</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="/store.js"></script>
+</head>
+<body>
+    <div id="loading" class="loading-overlay"><div class="spinner"></div></div>
+
+    <div class="app-container" style="padding-top: 100px;">
+        <div class="grid" style="display: grid; grid-template-columns: 1fr 2.2fr; gap: 30px; width: 100%;">
+            
+            <div class="sidebar">
+                <div class="card text-center" style="padding: 40px 20px;">
+                    <div style="background: linear-gradient(135deg, var(--primary), #c084fc); width: 100px; height: 100px; border-radius: 30px; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: 800; color: white; transform: rotate(-5deg); box-shadow: 0 15px 30px rgba(99,102,241,0.3);">
+                        <span id="userInitial">?</span>
+                    </div>
+                    <h2 id="fullName" style="margin-bottom: 5px;">Yükleniyor...</h2>
+                    <p id="userEmail" class="text-muted" style="font-size: 0.9rem; margin-bottom: 25px;"></p>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 30px;">
+                        <div style="background: var(--glass-bg); padding: 15px; border-radius: 15px; border: 1px solid var(--border);">
+                            <div class="text-muted" style="font-size: 0.7rem; text-transform: uppercase;">Yolculuk</div>
+                            <div id="tripCount" style="font-weight: 700; font-size: 1.2rem;">0</div>
+                        </div>
+                        <div style="background: var(--glass-bg); padding: 15px; border-radius: 15px; border: 1px solid var(--border);">
+                            <div class="text-muted" style="font-size: 0.7rem; text-transform: uppercase;">Puan</div>
+                            <div style="font-weight: 700; font-size: 1.2rem; color: var(--star);">4.9</div>
+                        </div>
+                    </div>
+
+                    <div style="text-align: left; background: rgba(0,0,0,0.2); padding: 20px; border-radius: 15px;">
+                        <div style="margin-bottom: 15px;">
+                            <div class="mb-1 text-muted" style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;">TC KİMLİK NUMARASI</div>
+                            <div id="userTc" style="font-weight: 600; color: white;">-</div>
+                        </div>
+                        <div>
+                            <div class="mb-1 text-muted" style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;">SİSTEME KAYIT TARİHİ</div>
+                            <div id="userCreated" style="font-weight: 600; color: white;">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="content">
+                <div class="card" style="max-width: none; min-height: 500px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+                        <h2>Tüm Yolculuk Geçmişi</h2>
+                        <div style="display: flex; gap: 10px;">
+                            <span style="background: var(--success)20; color: var(--success); font-size: 0.7rem; padding: 4px 12px; border-radius: 20px; font-weight: 700;">TAMAMLANDI</span>
+                        </div>
+                    </div>
+                    <div id="fullBookingList">
+                        <div class="text-muted">Veriler yükleniyor...</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Rating Modal -->
+    <div id="ratingModal" class="modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div style="background: rgba(251, 191, 36, 0.1); width: 70px; height: 70px; border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; color: var(--star);">
+                <i data-lucide="star" style="width: 35px; height: 35px;"></i>
+            </div>
+            <h3>Yolculuğu Puanla</h3>
+            <p class="text-muted" style="font-size: 0.9rem; margin-bottom: 25px;">Sürücü ve araç kalitesini değerlendirin.</p>
+            
+            <div id="starContainer" style="display: flex; justify-content: center; gap: 10px; margin-bottom: 30px; font-size: 2.5rem; cursor: pointer;">
+                <span onclick="setRating(1)" class="star-item" data-value="1">☆</span>
+                <span onclick="setRating(2)" class="star-item" data-value="2">☆</span>
+                <span onclick="setRating(3)" class="star-item" data-value="3">☆</span>
+                <span onclick="setRating(4)" class="star-item" data-value="4">☆</span>
+                <span onclick="setRating(5)" class="star-item" data-value="5">☆</span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <button onclick="closeRatingModal()" class="btn btn-secondary" style="width: 100%;">Vazgeç</button>
+                <button id="submitRatingBtn" class="btn btn-primary" style="width: 100%;">Gönder</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function init() {
+            const loading = document.getElementById('loading');
+            if (loading) setTimeout(() => loading.classList.add('loading-hidden'), 200);
+
+            const user = Store.getUser();
+            if (!user) {
+                window.location.href = '/';
+                return;
+            }
+            Store.renderNavbar();
+            lucide.createIcons();
+
+            // Fill Profile Details
+            document.getElementById('userInitial').textContent = user.firstName[0];
+            document.getElementById('fullName').textContent = `${user.firstName} ${user.lastName}`;
+            document.getElementById('userEmail').textContent = user.email;
+            document.getElementById('userTc').textContent = user.tcNo;
+            document.getElementById('userCreated').textContent = Store.formatDate(user.created_at);
+
+            await loadBookings();
+            setTimeout(() => document.getElementById('loading').classList.add('loading-hidden'), 500);
+        }
+
+        async function loadBookings() {
+            const user = Store.getUser();
+            const res = await Store.api(`/api/my-bookings/${user.id}`);
+            const bookings = await res.json();
+            const list = document.getElementById('fullBookingList');
+            document.getElementById('tripCount').textContent = bookings.length;
+
+            if (bookings.length === 0) {
+                list.innerHTML = `
+                    <div style="text-align:center; padding:100px 20px;">
+                        <div style="width: 80px; height: 80px; background: var(--glass-bg); border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; color: var(--text-muted);">
+                            <i data-lucide="map" style="width: 32px; height: 32px;"></i>
+                        </div>
+                        <div style="color:var(--text-muted);">Henüz hiç yolculuk yapmadınız. NexRide ile ilk yolculuğunuzu şimdi planlayın!</div>
+                        <a href="/index.html" class="btn btn-primary" style="margin-top: 20px; display: inline-flex;">Hemen Başla</a>
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            list.innerHTML = bookings.map(b => {
+                const isRated = b.userRating !== null;
+                const stars = isRated 
+                    ? `<div style="color:var(--star); margin-top: 5px;">${"★".repeat(b.userRating)}${"☆".repeat(5-b.userRating)}</div>`
+                    : `<button onclick="openRatingModal(${b.id}, ${b.driverId})" class="btn btn-secondary" style="font-size:0.7rem; padding:6px 12px; margin-top: 5px; background: rgba(251, 191, 36, 0.1); color: var(--star); border: 1px solid var(--star)30;">Yolculuğu Puanla</button>`;
+
+                const statusColor = b.status === 'Ödendi' ? 'var(--success)' : 'var(--warning)';
+
+                return `
+                    <div class="fade-in" style="background:var(--glass-bg); margin-bottom:15px; padding:25px; border-radius:20px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; transition: 0.3s;" onmouseover="this.style.borderColor='var(--primary)30'" onmouseout="this.style.borderColor='var(--border)'">
+                        <div style="display: flex; gap: 20px; align-items: center;">
+                            <div style="background: var(--primary)10; color: var(--primary); padding: 15px; border-radius: 15px;">
+                                <i data-lucide="map-pin"></i>
+                            </div>
+                            <div>
+                                <div style="font-weight:700; font-size:1.15rem; color: white;">${b.destination}</div>
+                                <div style="font-size:0.85rem; color:var(--text-muted); margin-top:5px; display: flex; align-items: center; gap: 8px;">
+                                    <i data-lucide="calendar" style="width: 14px;"></i> ${Store.formatDate(b.bookingDate)} • <b style="color: var(--primary-light);">${Store.formatCurrency(b.price)}</b>
+                                </div>
+                                <div style="font-size:0.8rem; margin-top:8px; color: var(--text-muted);">
+                                    Sürücü: <b style="color: var(--text);">${b.driverName || 'Bekleniyor...'}</b> ${b.plate ? `• <span style="background: #eee; color: #333; padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 0.7rem;">${b.plate}</span>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                        <div style="text-align:right;">
+                            <div style="margin-bottom:12px;">
+                                <span style="background:${statusColor}15; color:${statusColor}; font-size:0.7rem; padding:6px 14px; border-radius:20px; font-weight:800; border: 1px solid ${statusColor}30;">
+                                    ${b.status.toUpperCase()}
+                                </span>
+                            </div>
+                            <div>${stars}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            lucide.createIcons();
+        }
+
+        let currentRatingData = { bookingId: null, driverId: null, score: 0 };
+
+        function openRatingModal(bookingId, driverId) {
+            currentRatingData = { bookingId, driverId, score: 0 };
+            document.getElementById('ratingModal').style.display = 'flex';
+            setRating(0); // Reset stars
+            lucide.createIcons();
+        }
+
+        function closeRatingModal() {
+            document.getElementById('ratingModal').style.display = 'none';
+        }
+
+        function setRating(score) {
+            currentRatingData.score = score;
+            const stars = document.querySelectorAll('.star-item');
+            stars.forEach((star, index) => {
+                if (index < score) {
+                    star.textContent = '★';
+                    star.style.color = 'var(--star)';
+                } else {
+                    star.textContent = '☆';
+                    star.style.color = 'var(--text-muted)';
+                }
+            });
+        }
+
+        document.getElementById('submitRatingBtn').addEventListener('click', async () => {
+            if (currentRatingData.score === 0) {
+                return Store.showAlert('Lütfen en az 1 yıldız verin.', 'error');
+            }
+
+            document.getElementById('loading').classList.remove('loading-hidden');
+            const user = Store.getUser();
+            const res = await Store.api('/api/ratings', {
+                method: 'POST',
+                body: JSON.stringify({ 
+                    driverId: currentRatingData.driverId, 
+                    userId: user.id, 
+                    score: currentRatingData.score, 
+                    bookingId: currentRatingData.bookingId 
+                })
+            });
+
+            if (res.ok) {
+                Store.showAlert('Geri bildiriminiz için teşekkürler!', 'success');
+                closeRatingModal();
+                await loadBookings();
+            } else {
+                const data = await res.json();
+                Store.showAlert(data.error, 'error');
+            }
+            setTimeout(() => document.getElementById('loading').classList.add('loading-hidden'), 500);
+        });
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

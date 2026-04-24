@@ -1,0 +1,9 @@
+node_modules
+npm-debug.log
+sqlite.db
+sqlite.db-journal
+sqlite.db-wal
+.git
+.dockerignore
+Dockerfile
+docker-compose.yml

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cüzdanım | NexRide</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="/store.js"></script>
+</head>
+<body>
+    <div id="loading" class="loading-overlay"><div class="spinner"></div></div>
+
+    <div class="app-container" style="padding-top: 100px;">
+        <div class="grid" style="display: grid; grid-template-columns: 1fr 1.6fr; gap: 30px; width: 100%;">
+            
+            <div class="sidebar">
+                <div class="card" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark)); margin-bottom: 20px; overflow: hidden; position: relative;">
+                    <div style="position: absolute; right: -20px; top: -20px; opacity: 0.1; transform: rotate(15deg);">
+                        <i data-lucide="wallet" style="width: 150px; height: 150px;"></i>
+                    </div>
+                    <h3 style="color: rgba(255,255,255,0.7); font-size: 0.8rem; letter-spacing: 1px; text-transform: uppercase;">Mevcut Bakiye</h3>
+                    <div id="balanceDisplay" style="font-size: 3rem; font-weight: 700; color: white; margin: 15px 0;">₺0.00</div>
+                    <div style="font-size: 0.8rem; color: rgba(255,255,255,0.6); display: flex; align-items: center; gap: 5px;">
+                        <i data-lucide="shield-check" style="width: 14px;"></i> Güvenli dijital cüzdan
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3 style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;"><i data-lucide="plus-circle"></i> Bakiye Yükle</h3>
+                    <div class="form-group">
+                        <label>Miktar (₺)</label>
+                        <input type="number" id="depositAmount" placeholder="Miktar giriniz (Örn: 100)" min="10">
+                    </div>
+                    <button onclick="depositMoney()" class="btn btn-primary" style="width:100%;">Hesaba Ekle</button>
+                </div>
+
+                <div class="card" style="margin-top: 20px;">
+                    <h3 style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;"><i data-lucide="send"></i> Para Gönder</h3>
+                    <div class="form-group">
+                        <label>Alıcı E-posta</label>
+                        <input type="email" id="transferEmail" placeholder="ornek@mail.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Miktar (₺)</label>
+                        <input type="number" id="transferAmount" placeholder="Miktar giriniz" min="1">
+                    </div>
+                    <button onclick="transferMoney()" class="btn btn-secondary" style="width:100%; border: 1px solid var(--primary);">Transferi Onayla</button>
+                </div>
+            </div>
+
+            <div class="content">
+                <div class="card" style="max-width: none; min-height: 600px;">
+                    <h2 style="display: flex; align-items: center; gap: 10px; margin-bottom: 25px;"><i data-lucide="list"></i> İşlem Hareketleri</h2>
+                    <div id="transactionList">
+                        <div class="text-muted">Yükleniyor...</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        async function init() {
+            const loading = document.getElementById('loading');
+            if (loading) setTimeout(() => loading.classList.add('loading-hidden'), 200);
+
+            const user = Store.getUser();
+            if (!user) {
+                window.location.href = '/';
+                return;
+            }
+            Store.renderNavbar();
+            lucide.createIcons();
+            await updateBalance();
+            await loadTransactions();
+            setTimeout(() => document.getElementById('loading').classList.add('loading-hidden'), 500);
+        }
+
+        async function updateBalance() {
+            const user = Store.getUser();
+            const res = await Store.api(`/api/wallet/balance/${user.id}`);
+            const data = await res.json();
+            document.getElementById('balanceDisplay').textContent = Store.formatCurrency(data.balance);
+        }
+
+        async function loadTransactions() {
+            const user = Store.getUser();
+            const res = await Store.api(`/api/wallet/transactions/${user.id}`);
+            const transactions = await res.json();
+            const list = document.getElementById('transactionList');
+
+            if (transactions.length === 0) {
+                list.innerHTML = `
+                    <div style="text-align:center; padding:100px 20px;">
+                        <i data-lucide="info" style="width:48px; height:48px; color:var(--text-muted); margin-bottom:15px; opacity:0.5;"></i>
+                        <div style="color:var(--text-muted);">Henüz bir finansal işlem yapmadınız.</div>
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            list.innerHTML = transactions.map(t => {
+                const isPositive = ['Yükleme', 'Transfer Gelen'].includes(t.type);
+                const icon = isPositive ? 'arrow-up-right' : 'arrow-down-left';
+                const color = isPositive ? 'var(--success)' : 'var(--error)';
+                
+                return `
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:18px; border-bottom:1px solid var(--border); transition: 0.3s; border-radius: 12px; margin-bottom: 5px;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'">
+                        <div style="display:flex; align-items:center; gap:15px;">
+                            <div style="background:${color}15; color:${color}; padding:10px; border-radius:12px;">
+                                <i data-lucide="${icon}" style="width:20px; height:20px;"></i>
+                            </div>
+                            <div>
+                                <div style="font-weight:700; color:white;">${t.type}</div>
+                                <div style="font-size:0.75rem; color:var(--text-muted);">${Store.formatDate(t.created_at)}</div>
+                                <div style="font-size:0.75rem; color:var(--primary-light); font-weight:600; margin-top:2px;">${t.details || ''}</div>
+                            </div>
+                        </div>
+                        <div style="font-size:1.2rem; font-weight:800; color:${color}">
+                            ${isPositive ? '+' : '-'}${Store.formatCurrency(t.amount)}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            lucide.createIcons();
+        }
+
+        async function depositMoney() {
+            const amount = document.getElementById('depositAmount').value;
+            if (!amount || amount <= 0) return Store.showAlert('Lütfen geçerli bir miktar girin.', 'error');
+
+            document.getElementById('loading').classList.remove('loading-hidden');
+            const user = Store.getUser();
+            const res = await Store.api('/api/wallet/deposit', {
+                method: 'POST',
+                body: JSON.stringify({ userId: user.id, amount })
+            });
+
+            if (res.ok) {
+                Store.showAlert('Bakiye başarıyla eklendi!', 'success');
+                document.getElementById('depositAmount').value = '';
+                await updateBalance();
+                await loadTransactions();
+            } else {
+                Store.showAlert('Yükleme işlemi başarısız oldu.', 'error');
+            }
+            setTimeout(() => document.getElementById('loading').classList.add('loading-hidden'), 500);
+        }
+
+        async function transferMoney() {
+            const email = document.getElementById('transferEmail').value;
+            const amount = document.getElementById('transferAmount').value;
+            if (!email || !amount || amount <= 0) return Store.showAlert('Lütfen tüm alanları doğru doldurun.', 'error');
+
+            if (!confirm(`${email} adresine ${amount} TL göndermek istediğinize emin misiniz?`)) return;
+
+            document.getElementById('loading').classList.remove('loading-hidden');
+            const user = Store.getUser();
+            const res = await Store.api('/api/wallet/transfer', {
+                method: 'POST',
+                body: JSON.stringify({ fromUserId: user.id, toEmail: email, amount })
+            });
+
+            if (res.ok) {
+                Store.showAlert('Para transferi başarıyla gerçekleşti!', 'success');
+                document.getElementById('transferEmail').value = '';
+                document.getElementById('transferAmount').value = '';
+                await updateBalance();
+                await loadTransactions();
+            } else {
+                const data = await res.json();
+                Store.showAlert(data.error, 'error');
+            }
+            setTimeout(() => document.getElementById('loading').classList.add('loading-hidden'), 500);
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

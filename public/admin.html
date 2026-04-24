@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Yönetimi | NexRide</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="/store.js"></script>
+</head>
+<body style="background: #020617;">
+    <div id="loading" class="loading-overlay"><div class="spinner"></div></div>
+
+    <div class="app-container" style="padding-top: 100px; max-width: 1400px;">
+        
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 30px; width: 100%;">
+            <div>
+                <h1 style="text-align: left; margin-bottom: 5px; font-size: 2.5rem;">Sistem Dashboard</h1>
+                <p class="text-muted">Platformun genel durumu ve kullanıcı hareketlerini yönetin.</p>
+            </div>
+            <div style="background: var(--glass-bg); padding: 10px 20px; border-radius: 12px; border: 1px solid var(--border); display: flex; align-items: center; gap: 10px;">
+                <div style="width: 10px; height: 10px; background: var(--success); border-radius: 50%; box-shadow: 0 0 10px var(--success);"></div>
+                <span style="font-size: 0.8rem; font-weight: 600;">Sistem Çalışıyor</span>
+            </div>
+        </div>
+        
+        <div class="stats-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; width: 100%; margin-bottom: 30px;">
+            <div class="card" style="padding: 25px; border-left: 4px solid var(--primary);">
+                <div class="text-muted" style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase;">TOPLAM KULLANICI</div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px;">
+                    <div id="statUsers" style="font-size: 2.2rem; font-weight: 800; color: white;">0</div>
+                    <i data-lucide="users" style="color: var(--primary); opacity: 0.5;"></i>
+                </div>
+            </div>
+            <div class="card" style="padding: 25px; border-left: 4px solid #c084fc;">
+                <div class="text-muted" style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase;">TOPLAM REZERVASYON</div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px;">
+                    <div id="statBookings" style="font-size: 2.2rem; font-weight: 800; color: white;">0</div>
+                    <i data-lucide="map" style="color: #c084fc; opacity: 0.5;"></i>
+                </div>
+            </div>
+            <div class="card" style="padding: 25px; border-left: 4px solid var(--success);">
+                <div class="text-muted" style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase;">AKTİF SÜRÜCÜ</div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px;">
+                    <div id="statDrivers" style="font-size: 2.2rem; font-weight: 800; color: white;">0</div>
+                    <i data-lucide="car" style="color: var(--success); opacity: 0.5;"></i>
+                </div>
+            </div>
+            <div class="card" style="padding: 25px; border-left: 4px solid var(--star);">
+                <div class="text-muted" style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase;">TOPLAM HASILAT</div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px;">
+                    <div id="statRevenue" style="font-size: 2.2rem; font-weight: 800; color: var(--success);">₺0</div>
+                    <i data-lucide="trending-up" style="color: var(--star); opacity: 0.5;"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid" style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 30px; width: 100%;">
+            
+            <div class="card" style="max-width: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+                    <h2>Kullanıcı Yönetimi</h2>
+                    <div style="position: relative;">
+                        <input type="text" id="userSearch" placeholder="İsim veya Email ile ara..." style="width: 250px; padding: 10px 15px 10px 40px; border-radius: 12px;" onkeyup="searchUsers()">
+                        <i data-lucide="search" style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); width: 16px; color: var(--text-muted);"></i>
+                    </div>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                        <thead>
+                            <tr style="text-align: left; border-bottom: 1px solid var(--border); color: var(--text-muted);">
+                                <th style="padding: 15px;">AD SOYAD</th>
+                                <th style="padding: 15px;">E-POSTA</th>
+                                <th style="padding: 15px;">BAKİYE</th>
+                                <th style="padding: 15px;">İŞLEM</th>
+                            </tr>
+                        </thead>
+                        <tbody id="userTableBody">
+                            <!-- Kullanıcılar -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card" style="max-width: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+                    <h2>Tüm Yolculuklar</h2>
+                    <div style="position: relative;">
+                        <input type="text" id="bookingSearch" placeholder="Hedef veya Sürücü ara..." style="width: 250px; padding: 10px 15px 10px 40px; border-radius: 12px;" onkeyup="searchBookings()">
+                        <i data-lucide="search" style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); width: 16px; color: var(--text-muted);"></i>
+                    </div>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                        <thead>
+                            <tr style="text-align: left; border-bottom: 1px solid var(--border); color: var(--text-muted);">
+                                <th style="padding: 15px;">KULLANICI</th>
+                                <th style="padding: 15px;">HEDEF</th>
+                                <th style="padding: 15px;">ÜCRET</th>
+                                <th style="padding: 15px;">DURUM</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bookingTableBody">
+                            <!-- Rezervasyonlar -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        async function init() {
+            const user = Store.getUser();
+            const admins = ['egehayzaran27@gmail.com', 'sıdkıhayzaran@gmail.com'];
+            if (!user || user.role !== 'admin' && !admins.includes(user.email)) {
+                Store.showAlert('Admin yetkisi gereklidir.', 'error');
+                setTimeout(() => window.location.href = '/', 1500);
+                return;
+            }
+
+            Store.renderNavbar();
+            lucide.createIcons();
+
+            await loadUsers();
+            await loadBookings();
+            await loadStats();
+            setTimeout(() => document.getElementById('loading').classList.add('loading-hidden'), 500);
+        }
+
+        async function loadUsers(query = '') {
+            const res = await Store.api(`/api/users${query ? `?q=${query}` : ''}`);
+            const users = await res.json();
+            const body = document.getElementById('userTableBody');
+            body.innerHTML = users.map(u => `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); transition: 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background='transparent'">
+                    <td style="padding: 15px; font-weight: 600; color: white;">${u.firstName} ${u.lastName}</td>
+                    <td style="padding: 15px; color: var(--text-muted);">${u.email}</td>
+                    <td style="padding: 15px; font-weight: 700; color: var(--success);">${Store.formatCurrency(u.balance)}</td>
+                    <td style="padding: 15px;">
+                        <button onclick="deleteUser(${u.id})" class="btn btn-danger" style="padding: 6px; background: transparent;"><i data-lucide="trash-2" style="width:16px;"></i></button>
+                    </td>
+                </tr>
+            `).join('');
+            lucide.createIcons();
+            document.getElementById('statUsers').textContent = users.length;
+        }
+
+        async function loadBookings(query = '') {
+            const res = await Store.api(`/api/all-bookings${query ? `?q=${query}` : ''}`);
+            const bookings = await res.json();
+            const body = document.getElementById('bookingTableBody');
+            body.innerHTML = bookings.map(b => {
+                const color = b.status === 'Ödendi' ? 'var(--success)' : 'var(--warning)';
+                return `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); transition: 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background='transparent'">
+                    <td style="padding: 15px;">
+                        <div style="font-weight:600; color:white;">${b.firstName} ${b.lastName}</div>
+                        <div style="font-size:0.7rem; color:var(--text-muted);">${b.email}</div>
+                    </td>
+                    <td style="padding: 15px;">${b.destination.substring(0, 25)}...</td>
+                    <td style="padding: 15px; font-weight: 700;">${Store.formatCurrency(b.price)}</td>
+                    <td style="padding: 15px;">
+                        <span style="font-size:0.65rem; background:${color}15; color:${color}; padding:4px 10px; border-radius:10px; font-weight:800; border: 1px solid ${color}30;">${b.status.toUpperCase()}</span>
+                    </td>
+                </tr>
+                `;
+            }).join('');
+            document.getElementById('statBookings').textContent = bookings.length;
+            const revenue = bookings.filter(b => b.status === 'Ödendi').reduce((sum, b) => sum + b.price, 0);
+            document.getElementById('statRevenue').textContent = Store.formatCurrency(revenue);
+        }
+
+        async function loadStats() {
+            const res = await Store.api('/api/drivers');
+            const drivers = await res.json();
+            document.getElementById('statDrivers').textContent = drivers.length;
+        }
+
+        function searchUsers() { loadUsers(document.getElementById('userSearch').value); }
+        function searchBookings() { loadBookings(document.getElementById('bookingSearch').value); }
+
+        async function deleteUser(id) {
+            if (!confirm('Bu kullanıcıyı sistemden silmek istediğinize emin misiniz? Bu işlem geri alınamaz.')) return;
+            document.getElementById('loading').classList.remove('loading-hidden');
+            const res = await Store.api(`/api/users/${id}`, { method: 'DELETE' });
+            if (res.ok) {
+                Store.showAlert('Kullanıcı başarıyla silindi.', 'success');
+                await loadUsers();
+            } else {
+                Store.showAlert('Silme işlemi yapılamadı.', 'error');
+            }
+            setTimeout(() => document.getElementById('loading').classList.add('loading-hidden'), 500);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
