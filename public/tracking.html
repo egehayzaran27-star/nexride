@@ -100,6 +100,40 @@
         </div>
     </div>
 
+    <!-- Rating & Tipping Modal -->
+    <div id="ratingModal" class="modal">
+        <div class="modal-content" style="max-width: 400px; text-align: center;">
+            <div style="width: 80px; height: 80px; background: rgba(245, 158, 11, 0.1); border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; color: var(--star);">
+                <i data-lucide="star" style="width: 40px; height: 40px; fill: currentColor;"></i>
+            </div>
+            <h2>Yolculuk Tamamlandı!</h2>
+            <p style="color: var(--text-muted); margin-bottom: 20px;">Sürücünüzü puanlayın ve isterseniz bahşiş bırakın.</p>
+            
+            <!-- Yıldızlar -->
+            <div style="display: flex; justify-content: center; gap: 10px; margin-bottom: 25px;">
+                <i data-lucide="star" class="star-rating" data-value="1" onclick="setRating(1)" style="width: 32px; height: 32px; cursor: pointer; color: var(--text-muted);"></i>
+                <i data-lucide="star" class="star-rating" data-value="2" onclick="setRating(2)" style="width: 32px; height: 32px; cursor: pointer; color: var(--text-muted);"></i>
+                <i data-lucide="star" class="star-rating" data-value="3" onclick="setRating(3)" style="width: 32px; height: 32px; cursor: pointer; color: var(--text-muted);"></i>
+                <i data-lucide="star" class="star-rating" data-value="4" onclick="setRating(4)" style="width: 32px; height: 32px; cursor: pointer; color: var(--text-muted);"></i>
+                <i data-lucide="star" class="star-rating" data-value="5" onclick="setRating(5)" style="width: 32px; height: 32px; cursor: pointer; color: var(--text-muted);"></i>
+            </div>
+
+            <!-- Bahşiş -->
+            <div style="background: rgba(255,255,255,0.03); padding: 20px; border-radius: 20px; margin-bottom: 25px; border: 1px solid var(--border);">
+                <label style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 10px;">Bahşiş Bırak (₺)</label>
+                <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 15px;">
+                    <button onclick="setTip(10)" class="btn btn-sm btn-secondary" style="font-size: 0.7rem;">₺10</button>
+                    <button onclick="setTip(20)" class="btn btn-sm btn-secondary" style="font-size: 0.7rem;">₺20</button>
+                    <button onclick="setTip(50)" class="btn btn-sm btn-secondary" style="font-size: 0.7rem;">₺50</button>
+                </div>
+                <input type="number" id="tipAmount" placeholder="Diğer miktar..." min="0" style="width: 100%; text-align: center; background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 10px; color: white; padding: 10px;">
+            </div>
+
+            <button onclick="submitReview()" class="btn btn-primary" style="width: 100%; padding: 15px; font-weight: 700;">Değerlendirmeyi Gönder</button>
+            <button onclick="window.location.href='/index.html'" class="btn btn-secondary" style="width: 100%; margin-top: 10px; background: transparent;">Puanlamadan Geç</button>
+        </div>
+    </div>
+
     <script>
         let map, driverMarker, pickupMarker, destMarker, bookingId, socket;
         const TAXI_STATIONS = [
@@ -259,6 +293,69 @@
             showToast('Hedefe vardınız!', 'success');
             Store.playSound('success');
             window.isSimulating = false;
+
+            // Yolculuk tamamlandığında durumu güncelle ve modalı aç
+            setTimeout(async () => {
+                await Store.api(`/api/bookings/${bookingId}/status`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ status: 'Tamamlandı' })
+                });
+                document.getElementById('ratingModal').style.display = 'flex';
+                lucide.createIcons();
+            }, 1500);
+        }
+
+        let currentRating = 0;
+        function setRating(val) {
+            currentRating = val;
+            document.querySelectorAll('.star-rating').forEach(s => {
+                const sVal = parseInt(s.dataset.value);
+                s.style.color = sVal <= val ? 'var(--star)' : 'var(--text-muted)';
+                s.style.fill = sVal <= val ? 'var(--star)' : 'none';
+            });
+        }
+
+        function setTip(val) {
+            document.getElementById('tipAmount').value = val;
+        }
+
+        async function submitReview() {
+            const user = Store.getUser();
+            const b = window.currentBooking;
+            const tip = parseFloat(document.getElementById('tipAmount').value) || 0;
+
+            if (currentRating > 0) {
+                await Store.api('/api/bookings/ratings', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        bookingId: b.id,
+                        driverId: b.driverId,
+                        userId: user.id,
+                        score: currentRating
+                    })
+                });
+            }
+
+            if (tip > 0) {
+                const tipRes = await Store.api('/api/wallet/tip', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        userId: user.id,
+                        bookingId: b.id,
+                        amount: tip
+                    })
+                });
+                
+                if (tipRes.ok) {
+                    showToast('Bahşiş başarıyla gönderildi!', 'success');
+                } else {
+                    const data = await tipRes.json();
+                    showToast(data.error || 'Bahşiş gönderilemedi.', 'error');
+                }
+            }
+
+            showToast('Değerlendirme için teşekkürler!', 'success');
+            setTimeout(() => window.location.href = '/index.html', 1500);
         }
 
         function moveMarker(marker, start, end, speedKmh, movePassenger = false) {

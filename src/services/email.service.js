@@ -33,21 +33,12 @@ async function sendVerificationEmail(toEmail, code, subject = 'NexRide — Doğr
         html: `<div style="padding:20px;"><h3>NexRide Doğrulama Kodu</h3><h1>${code}</h1></div>`,
     });
 
-    const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('SMTP_TIMEOUT')), 8000)
-    );
-
     try {
-        // En fazla 3 saniye bekle
-        await Promise.race([emailPromise, timeoutPromise]);
+        await emailPromise;
         console.log(`✅ E-posta başarıyla gönderildi: ${toEmail}`);
     } catch (err) {
-        if (err.message === 'SMTP_TIMEOUT') {
-            console.warn(`⚠️ E-posta gönderimi yavaş, arka plana itildi. Kod terminalde mevcut.`);
-        } else {
-            console.error(`❌ E-posta hatası: ${err.message}`);
-        }
-        // Hata olsa bile API'nin çökmesini veya asılı kalmasını engelle
+        console.error(`❌ E-posta hatası: ${err.message}`);
+        throw err; // Hata fırlatalım ki frontend de bilsin
     }
 }
 

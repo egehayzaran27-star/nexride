@@ -697,7 +697,7 @@
         btn.disabled = true;
         btn.textContent = 'Gönderiliyor...';
 
-        const res = await Store.api('/api/send-email', {
+        const res = await Store.api('/api/wallet/send-email', {
             method: 'POST',
             body: JSON.stringify({ email: user.email })
         });

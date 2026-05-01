@@ -6,6 +6,17 @@ const BookingService = require('../services/booking.service');
 
 const router = express.Router();
 
+// POST /api/bookings/ratings
+router.post('/ratings', authMiddleware, async (req, res, next) => {
+    try {
+        const result = userDb.addRating(req.body);
+        if (result.success) res.status(201).json(result);
+        else res.status(400).json(result);
+    } catch (err) {
+        next(err);
+    }
+});
+
 // GET /api/bookings/my-bookings/:userId
 router.get('/my-bookings/:userId', authMiddleware, async (req, res, next) => {
     try {
@@ -91,5 +102,7 @@ router.get('/booking-updates/:userId', (req, res) => {
     
     req.on('close', () => clearInterval(interval));
 });
+
+
 
 module.exports = router;

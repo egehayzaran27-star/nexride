@@ -86,6 +86,17 @@
                 <span onclick="setRating(5)" class="star-item" data-value="5">☆</span>
             </div>
 
+            <!-- Bahşiş -->
+            <div style="background: rgba(255,255,255,0.03); padding: 20px; border-radius: 20px; margin-bottom: 25px; border: 1px solid var(--border); text-align: center;">
+                <label style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 10px;">Geçmiş Yolculuk İçin Bahşiş Bırak (₺)</label>
+                <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 15px;">
+                    <button onclick="setTip(10)" class="btn btn-sm btn-secondary" style="font-size: 0.7rem;">₺10</button>
+                    <button onclick="setTip(20)" class="btn btn-sm btn-secondary" style="font-size: 0.7rem;">₺20</button>
+                    <button onclick="setTip(50)" class="btn btn-sm btn-secondary" style="font-size: 0.7rem;">₺50</button>
+                </div>
+                <input type="number" id="tipAmount" placeholder="Diğer miktar..." min="0" style="width: 100%; text-align: center; background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 10px; color: white; padding: 10px;">
+            </div>
+
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                 <button onclick="closeRatingModal()" class="btn btn-secondary" style="width: 100%;">Vazgeç</button>
                 <button id="submitRatingBtn" class="btn btn-primary" style="width: 100%;">Gönder</button>
@@ -203,6 +214,10 @@
             });
         }
 
+        function setTip(val) {
+            document.getElementById('tipAmount').value = val;
+        }
+
         document.getElementById('submitRatingBtn').addEventListener('click', async () => {
             if (currentRatingData.score === 0) {
                 return showToast('Lütfen en az 1 yıldız verin.', 'error');
@@ -210,7 +225,10 @@
 
             document.getElementById('loading').classList.remove('loading-hidden');
             const user = Store.getUser();
-            const res = await Store.api('/api/ratings', {
+            const tip = parseFloat(document.getElementById('tipAmount').value) || 0;
+
+            // Puan gönder
+            const ratingRes = await Store.api('/api/bookings/ratings', {
                 method: 'POST',
                 body: JSON.stringify({ 
                     driverId: currentRatingData.driverId, 
@@ -220,12 +238,28 @@
                 })
             });
 
-            if (res.ok) {
+            // Bahşiş gönder
+            if (tip > 0) {
+                const tipRes = await Store.api('/api/wallet/tip', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        userId: user.id,
+                        bookingId: currentRatingData.bookingId,
+                        amount: tip
+                    })
+                });
+                
+                if (tipRes.ok) {
+                    showToast('Bahşiş başarıyla gönderildi!', 'success');
+                }
+            }
+
+            if (ratingRes.ok) {
                 showToast('Geri bildiriminiz için teşekkürler!', 'success');
                 closeRatingModal();
                 await loadBookings();
             } else {
-                const data = await res.json();
+                const data = await ratingRes.json();
                 showToast(data.error, 'error');
             }
             setTimeout(() => document.getElementById('loading').classList.add('loading-hidden'), 500);

@@ -81,6 +81,7 @@ function initializeDatabase() {
             pickupLocation TEXT,
             bookingDate TEXT NOT NULL,
             price REAL DEFAULT 0.0,
+            tip REAL DEFAULT 0.0,
             status TEXT DEFAULT 'Bekliyor',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
@@ -153,7 +154,7 @@ function initializeDatabase() {
     } catch (e) {}
 
     try {
-        db.exec("ALTER TABLE bookings ADD COLUMN pickupLocation TEXT;");
+        db.exec("ALTER TABLE bookings ADD COLUMN tip REAL DEFAULT 0.0;");
     } catch (e) {}
 
     // Örnek Sürücüleri Ekle (Seed)
@@ -437,9 +438,10 @@ function updateBookingStatus(id, status) {
                 if (status === 'Tamamlandı' && booking.price > 0) {
                     const driverRecord = db.prepare('SELECT userId FROM drivers WHERE id = ?').get(booking.driverId);
                     if (driverRecord && driverRecord.userId) {
-                        db.prepare('UPDATE users SET balance = balance + ? WHERE id = ?').run(booking.price, driverRecord.userId);
+                        const totalPayment = booking.price + (booking.tip || 0);
+                        db.prepare('UPDATE users SET balance = balance + ? WHERE id = ?').run(totalPayment, driverRecord.userId);
                         db.prepare('INSERT INTO transactions (userId, type, amount, details) VALUES (?, ?, ?, ?)').run(
-                            driverRecord.userId, 'Yolculuk Kazancı', booking.price, `Yolculuk ID: ${booking.id}`
+                            driverRecord.userId, 'Yolculuk Kazancı', totalPayment, `Yolculuk ID: ${booking.id} (Ücret: ${booking.price}, Bahşiş: ${booking.tip || 0})`
                         );
                     }
                 }
@@ -724,6 +726,82 @@ module.exports = {
     deleteVerificationCode: (email) => {
         const query = db.prepare('DELETE FROM verification_codes WHERE email = ?');
         return query.run(email);
+    },
+
+    addTipToBooking: (userId, bookingId, tipAmount) => {
+        const uId = Number(userId);
+        const bId = Number(bookingId);
+        const amt = Number(tipAmount);
+
+        if (amt <= 0) return { success: false, error: 'Bahşiş miktarı 0\'dan büyük olmalıdır.' };
+
+        const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(uId);
+        const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(bId);
+
+        if (!user) return { success: false, error: 'Kullanıcı bulunamadı.' };
+        if (!booking) return { success: false, error: 'Rezervasyon bulunamadı.' };
+        if (booking.userId !== uId) return { success: false, error: 'Yetkisiz işlem.' };
+        if (user.balance < amt) return { success: false, error: 'Yetersiz bakiye.' };
+
+        const updateBookingTip = db.prepare('UPDATE bookings SET tip = IFNULL(tip, 0) + ? WHERE id = ?');
+        const updateUserBalance = db.prepare('UPDATE users SET balance = balance - ? WHERE id = ?');
+        const logTransaction = db.prepare('INSERT INTO transactions (userId, type, amount, details) VALUES (?, ?, ?, ?)');
+
+        try {
+            const transaction = db.transaction(() => {
+                updateUserBalance.run(amt, uId);
+                updateBookingTip.run(amt, bId);
+                logTransaction.run(uId, 'Bahşiş', amt, `Rezervasyon #${bId} için bahşiş`);
+
+                // Eğer yolculuk zaten tamamlandıysa, bahşişi hemen sürücüye aktar
+                if (booking.status === 'Tamamlandı' || booking.status === 'Ödendi') {
+                    const driverRecord = db.prepare('SELECT userId FROM drivers WHERE id = ?').get(booking.driverId);
+                    if (driverRecord && driverRecord.userId) {
+                        db.prepare('UPDATE users SET balance = balance + ? WHERE id = ?').run(amt, driverRecord.userId);
+                        logTransaction.run(driverRecord.userId, 'Bahşiş Kazancı', amt, `Rezervasyon #${bId} için bahşiş alındı`);
+                    }
+                }
+            });
+            transaction();
+            return { success: true };
+        } catch (err) {
+            console.error('[Bahşiş Hata]', err.message);
+            return { success: false, error: err.message };
+        }
+    },
+
+    getDriverStats: (userId) => {
+        const uId = Number(userId);
+        const driver = db.prepare('SELECT id FROM drivers WHERE userId = ?').get(uId);
+        if (!driver) return null;
+
+        const dId = driver.id;
+        
+        // Günlük kazanç (Bugün tamamlanan yolculuklar + bahşişler)
+        const today = new Date().toISOString().split('T')[0];
+        const earnings = db.prepare(`
+            SELECT 
+                SUM(price + IFNULL(tip, 0)) as totalEarnings,
+                COUNT(id) as totalTrips
+            FROM bookings 
+            WHERE driverId = ? AND status = 'Tamamlandı' AND DATE(created_at) = DATE(?)
+        `).get(dId, today);
+
+        // Ortalama puan ve toplam değerlendirme
+        const rating = db.prepare(`
+            SELECT 
+                IFNULL(AVG(score), 0) as avgScore,
+                COUNT(id) as ratingCount
+            FROM ratings
+            WHERE driverId = ?
+        `).get(dId);
+
+        return {
+            dailyEarnings: earnings.totalEarnings || 0,
+            dailyTrips: earnings.totalTrips || 0,
+            avgScore: rating.avgScore,
+            ratingCount: rating.ratingCount
+        };
     },
 
     db, // Ham veritabanı erişimi (bakım için)

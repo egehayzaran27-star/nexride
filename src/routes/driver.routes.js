@@ -68,4 +68,15 @@ router.delete('/:id', adminMiddleware, async (req, res, next) => {
     }
 });
 
+// GET /api/drivers/stats
+router.get('/stats', authMiddleware, async (req, res, next) => {
+    try {
+        const stats = userDb.getDriverStats(req.user.id);
+        if (stats) res.json(stats);
+        else res.status(404).json({ error: 'Sürücü bulunamadı.' });
+    } catch (err) {
+        next(err);
+    }
+});
+
 module.exports = router;

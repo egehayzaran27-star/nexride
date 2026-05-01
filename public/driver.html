@@ -37,14 +37,14 @@
             <div class="sidebar-info">
                 <div class="card mb-1 fade-in">
                     <h3><i data-lucide="trending-up"></i> Günlük Kazanç</h3>
-                    <div style="font-size: 2.5rem; font-weight: 700; color: var(--success); margin: 15px 0;">₺0.00</div>
-                    <p class="text-muted" style="font-size: 0.85rem;">Bugün 0 yolculuk tamamlandı.</p>
+                    <div id="dailyEarningsDisplay" style="font-size: 2.5rem; font-weight: 700; color: var(--success); margin: 15px 0;">₺0.00</div>
+                    <p id="dailyTripsInfo" class="text-muted" style="font-size: 0.85rem;">Bugün 0 yolculuk tamamlandı.</p>
                 </div>
                 <div class="card fade-in">
                     <h3><i data-lucide="star"></i> Performans</h3>
                     <div style="display: flex; align-items: center; gap: 10px; margin-top: 15px;">
-                        <span style="font-size: 1.5rem; font-weight: 700; color: var(--star);">★ 5.0</span>
-                        <span class="text-muted" style="font-size: 0.8rem;">(0 değerlendirme)</span>
+                        <span id="avgScoreDisplay" style="font-size: 1.5rem; font-weight: 700; color: var(--star);">★ 5.0</span>
+                        <span id="ratingCountInfo" class="text-muted" style="font-size: 0.8rem;">(0 değerlendirme)</span>
                     </div>
                 </div>
             </div>
@@ -85,6 +85,7 @@
             
             Store.renderNavbar();
             loadRequests();
+            loadStats();
             
             // Socket.io Bağlantısı
             socket = io();
@@ -107,9 +108,21 @@
                 Store.playSound('new_request');
                 showToast('Yeni bir yolculuk talebi geldi!', 'info');
                 loadRequests();
+                loadStats();
             });
 
             lucide.createIcons();
+        }
+
+        async function loadStats() {
+            const res = await Store.api('/api/drivers/stats');
+            if (res.ok) {
+                const stats = await res.json();
+                document.getElementById('dailyEarningsDisplay').textContent = Store.formatCurrency(stats.dailyEarnings);
+                document.getElementById('dailyTripsInfo').textContent = `Bugün ${stats.dailyTrips} yolculuk tamamlandı.`;
+                document.getElementById('avgScoreDisplay').textContent = `★ ${stats.avgScore.toFixed(1)}`;
+                document.getElementById('ratingCountInfo').textContent = `(${stats.ratingCount} değerlendirme)`;
+            }
         }
 
         let currentLat = 39.9334, currentLng = 32.8597; // Başlangıç konumu (Ankara)

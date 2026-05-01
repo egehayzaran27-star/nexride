@@ -123,4 +123,16 @@ router.post('/pay', authMiddleware, async (req, res, next) => {
     }
 });
 
+// POST /api/wallet/tip
+router.post('/tip', authMiddleware, async (req, res, next) => {
+    const { userId, bookingId, amount } = req.body;
+    try {
+        const result = userDb.addTipToBooking(userId, bookingId, amount);
+        if (result.success) res.json(result);
+        else res.status(400).json(result);
+    } catch (error) {
+        next(error);
+    }
+});
+
 module.exports = router;
