@@ -38,7 +38,36 @@ function initializeDatabase() {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             carModel TEXT NOT NULL,
-            plate TEXT UNIQUE NOT NULL
+            plate TEXT UNIQUE NOT NULL,
+            lat REAL,
+            lng REAL,
+            is_available INTEGER DEFAULT 1,
+            userId INTEGER REFERENCES users(id)
+        )
+    `;
+
+    // Favori Adresler Tablosu
+    const createFavoritesTable = `
+        CREATE TABLE IF NOT EXISTS favorite_addresses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            userId INTEGER NOT NULL,
+            label TEXT NOT NULL,
+            address TEXT NOT NULL,
+            lat REAL,
+            lng REAL,
+            FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+        )
+    `;
+
+    // Bildirimler Tablosu
+    const createNotificationsTable = `
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            userId INTEGER NOT NULL,
+            message TEXT NOT NULL,
+            is_read INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
         )
     `;
 
@@ -49,6 +78,7 @@ function initializeDatabase() {
             userId INTEGER NOT NULL,
             driverId INTEGER,
             destination TEXT NOT NULL,
+            pickupLocation TEXT,
             bookingDate TEXT NOT NULL,
             price REAL DEFAULT 0.0,
             status TEXT DEFAULT 'Bekliyor',
@@ -86,15 +116,44 @@ function initializeDatabase() {
         )
     `;
 
+    // Doğrulama Kodları Tablosu
+    const createVerificationCodesTable = `
+        CREATE TABLE IF NOT EXISTS verification_codes (
+            email TEXT PRIMARY KEY,
+            code TEXT NOT NULL,
+            expires_at INTEGER NOT NULL
+        )
+    `;
+
     db.exec(createUsersTable);
     db.exec(createDriversTable);
     db.exec(createBookingsTable);
     db.exec(createRatingsTable);
     db.exec(createTransactionsTable);
+    db.exec(createVerificationCodesTable);
+    db.exec(createFavoritesTable);
+    db.exec(createNotificationsTable);
+
+    // İndeksler (Performans için)
+    db.exec('CREATE INDEX IF NOT EXISTS idx_bookings_userId ON bookings(userId)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_transactions_userId ON transactions(userId)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_ratings_driverId ON ratings(driverId)');
 
     // Geriye dönük uyumluluk: role kolonu yoksa ekle
     try {
         db.exec("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user';");
+    } catch (e) {}
+
+    try {
+        db.exec("ALTER TABLE drivers ADD COLUMN lat REAL;");
+        db.exec("ALTER TABLE drivers ADD COLUMN lng REAL;");
+        db.exec("ALTER TABLE drivers ADD COLUMN is_available INTEGER DEFAULT 1;");
+        db.exec("ALTER TABLE drivers ADD COLUMN userId INTEGER;");
+    } catch (e) {}
+
+    try {
+        db.exec("ALTER TABLE bookings ADD COLUMN pickupLocation TEXT;");
     } catch (e) {}
 
     // Örnek Sürücüleri Ekle (Seed)
@@ -150,7 +209,8 @@ async function checkUserCredentials(email, password) {
         if (isMatch) {
             db.prepare("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?").run(user.id);
             const { password, ...userWithoutPassword } = user;
-            return { success: true, user: userWithoutPassword };
+            const driverRecord = db.prepare('SELECT id FROM drivers WHERE userId = ?').get(user.id);
+            return { success: true, user: { ...userWithoutPassword, isDriver: !!driverRecord } };
         }
     }
     return { success: false, error: 'E-posta veya şifre hatalı.' };
@@ -172,17 +232,113 @@ function getDriversWithAvgRatings() {
 }
 
 /**
+ * Kullanıcıyı sürücü olarak kaydeder veya bilgilerini günceller
+ */
+function becomeDriver(userId, carData) {
+    const { name, carModel, plate } = carData;
+    try {
+        // Önce bu kullanıcının zaten bir sürücü kaydı var mı bak
+        const existingDriver = db.prepare('SELECT id FROM drivers WHERE userId = ?').get(userId);
+
+        if (existingDriver) {
+            // Varsa güncelle
+            db.prepare(`
+                UPDATE drivers 
+                SET name = ?, carModel = ?, plate = ?
+                WHERE userId = ?
+            `).run(name, carModel, plate, userId);
+            
+            return { success: true, id: existingDriver.id, message: 'Sürücü bilgileri güncellendi.' };
+        } else {
+            // Yoksa yeni kayıt oluştur
+            const query = db.prepare(`
+                INSERT INTO drivers (name, carModel, plate, userId, is_available) 
+                VALUES (?, ?, ?, ?, 0)
+            `);
+            const result = query.run(name, carModel, plate, userId);
+            
+            // Kullanıcının rolünü güncelle (Sadece user ise driver yap, adminliği bozma)
+            const user = db.prepare('SELECT role FROM users WHERE id = ?').get(userId);
+            if (user && user.role === 'user') {
+                db.prepare('UPDATE users SET role = "driver" WHERE id = ?').run(userId);
+            }
+            
+            return { success: true, id: result.lastInsertRowid };
+        }
+    } catch (err) {
+        if (err.message.includes('UNIQUE constraint failed: drivers.plate')) {
+            return { success: false, error: 'Bu plaka zaten başka bir sürücü tarafından kullanılıyor.' };
+        }
+        return { success: false, error: err.message };
+    }
+}
+
+/**
+ * Sürücü müsaitlik durumunu günceller (userId'ye göre)
+ */
+function updateDriverAvailability(userId, isAvailable) {
+    const val = isAvailable ? 1 : 0;
+    return db.prepare('UPDATE drivers SET is_available = ? WHERE userId = ?').run(val, userId);
+}
+
+/**
+ * Sürücüyü siler ve kullanıcının rolünü 'user'a çeker
+ */
+function deleteDriver(driverId) {
+    const driver = db.prepare('SELECT userId FROM drivers WHERE id = ?').get(driverId);
+    if (!driver) return false;
+
+    const transaction = db.transaction(() => {
+        db.prepare('DELETE FROM drivers WHERE id = ?').run(driverId);
+        db.prepare('UPDATE users SET role = "user" WHERE id = ?').run(driver.userId);
+    });
+
+    transaction();
+    return true;
+}
+
+/**
+ * Aktif sürücüleri getirir
+ */
+function getAvailableDrivers() {
+    return db.prepare('SELECT * FROM drivers WHERE is_available = 1').all();
+}
+
+/**
+ * Verilen koordinatlara en yakın müsait sürücüleri bulur (Haversine Formülü)
+ * @param {number} lat - Enlem
+ * @param {number} lng - Boylam
+ * @param {number} limit - Maksimum sürücü sayısı
+ */
+function getNearbyDrivers(lat, lng, limit = 5) {
+    const query = db.prepare(`
+        SELECT *, 
+            (6371 * acos(
+                cos(radians(?)) * cos(radians(lat)) *
+                cos(radians(lng) - radians(?)) +
+                sin(radians(?)) * sin(radians(lat))
+            )) AS distance
+        FROM drivers
+        WHERE is_available = 1
+        ORDER BY distance ASC
+        LIMIT ?
+    `);
+    return query.all(lat, lng, lat, limit);
+}
+
+
+/**
  * Yeni bir rezervasyon ekler
  */
 function addBooking(bookingData) {
-    const { userId, driverId, destination, bookingDate, price } = bookingData;
+    const { userId, driverId, destination, pickupLocation, bookingDate, price } = bookingData;
     const insertQuery = db.prepare(`
-        INSERT INTO bookings (userId, driverId, destination, bookingDate, price)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO bookings (userId, driverId, destination, pickupLocation, bookingDate, price)
+        VALUES (?, ?, ?, ?, ?, ?)
     `);
     
     try {
-        const result = insertQuery.run(userId, driverId || null, destination, bookingDate, price || 0);
+        const result = insertQuery.run(userId, driverId || null, destination, pickupLocation || null, bookingDate, price || 0);
         return { success: true, id: result.lastInsertRowid };
     } catch (err) {
         return { success: false, error: err.message };
@@ -226,19 +382,99 @@ function addRating(ratingData) {
     }
 }
 
+
+
 /**
- * Tüm rezervasyonları listeler (Admin için)
+ * Sayfalamalı tüm rezervasyonları getirir
  */
-function getAllBookings() {
-    const selectQuery = db.prepare(`
+function getAllBookingsPaginated(limit, offset) {
+    const query = db.prepare(`
         SELECT b.*, u.firstName, u.lastName, u.email, d.name as driverName 
         FROM bookings b
         JOIN users u ON b.userId = u.id
         LEFT JOIN drivers d ON b.driverId = d.id
         ORDER BY b.created_at DESC
-        LIMIT 5
+        LIMIT ? OFFSET ?
     `);
-    return selectQuery.all();
+    return query.all(limit, offset);
+}
+
+/**
+ * Toplam rezervasyon sayısını döner
+ */
+function countAllBookings() {
+    return db.prepare('SELECT COUNT(*) as count FROM bookings').get().count;
+}
+
+/**
+ * ID'ye göre rezervasyon getirir
+ */
+function getBookingById(id) {
+    return db.prepare('SELECT * FROM bookings WHERE id = ?').get(id);
+}
+
+/**
+ * Rezervasyon durumunu günceller
+ */
+function updateBookingStatus(id, status) {
+    const booking = getBookingById(id);
+    if (!booking) return { changes: 0 };
+
+    const transaction = db.transaction(() => {
+        // Durumu güncelle
+        db.prepare('UPDATE bookings SET status = ? WHERE id = ?').run(status, id);
+
+        // Sürücü müsaitliğini yönet
+        if (booking.driverId) {
+            if (status === 'Onaylandı' || status === 'Yolda') {
+                // Sürücü artık meşgul
+                db.prepare('UPDATE drivers SET is_available = 0 WHERE id = ?').run(booking.driverId);
+            } else if (status === 'Tamamlandı' || status === 'İptal Edildi') {
+                // Sürücü artık müsait
+                db.prepare('UPDATE drivers SET is_available = 1 WHERE id = ?').run(booking.driverId);
+                
+                // Eğer tamamlandıysa sürücüye parayı yatır
+                if (status === 'Tamamlandı' && booking.price > 0) {
+                    const driverRecord = db.prepare('SELECT userId FROM drivers WHERE id = ?').get(booking.driverId);
+                    if (driverRecord && driverRecord.userId) {
+                        db.prepare('UPDATE users SET balance = balance + ? WHERE id = ?').run(booking.price, driverRecord.userId);
+                        db.prepare('INSERT INTO transactions (userId, type, amount, details) VALUES (?, ?, ?, ?)').run(
+                            driverRecord.userId, 'Yolculuk Kazancı', booking.price, `Yolculuk ID: ${booking.id}`
+                        );
+                    }
+                }
+            }
+        }
+    });
+
+    transaction();
+    return { changes: 1 };
+}
+
+/**
+ * Rezervasyonu iptal eder ve gerekirse iade yapar
+ */
+function cancelBookingWithRefund(bookingId) {
+    const booking = getBookingById(bookingId);
+    if (!booking) throw new Error('Rezervasyon bulunamadı.');
+
+    const transaction = db.transaction(() => {
+        // Durumu güncelle
+        db.prepare("UPDATE bookings SET status = 'İptal Edildi' WHERE id = ?").run(bookingId);
+
+        // Eğer ödendiyse bakiye iadesi yap
+        if (booking.status === 'Ödendi') {
+            db.prepare('UPDATE users SET balance = balance + ? WHERE id = ?').run(booking.price, booking.userId);
+            db.prepare('INSERT INTO transactions (userId, type, amount, details) VALUES (?, ?, ?, ?)').run(
+                booking.userId, 
+                'İade', 
+                booking.price, 
+                `${booking.destination} yolculuğu iptal iadesi`
+            );
+        }
+    });
+    transaction();
+    return { success: true };
 }
 
 /**
@@ -249,6 +485,23 @@ function updateUser(id, userData) {
     const updateQuery = db.prepare('UPDATE users SET firstName = ?, lastName = ?, location = ?, phone = ? WHERE id = ?');
     const result = updateQuery.run(firstName, lastName, location, phone, id);
     return result.changes > 0;
+}
+
+/**
+ * Şifre günceller
+ */
+async function updateUserPassword(id, oldPassword, newPassword) {
+    const user = db.prepare('SELECT password FROM users WHERE id = ?').get(id);
+    if (!user) return { success: false, error: 'Kullanıcı bulunamadı.' };
+
+    const isMatch = await bcrypt.compare(oldPassword, user.password);
+    if (!isMatch) return { success: false, error: 'Eski şifre hatalı.' };
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hashedPassword, id);
+    return { success: true, message: 'Şifre güncellendi.' };
 }
 
 /**
@@ -266,6 +519,14 @@ function deleteUser(id) {
 function getAllUsers() {
     const query = db.prepare('SELECT * FROM users ORDER BY created_at DESC');
     return query.all();
+}
+
+/**
+ * ID'ye göre kullanıcı bulur
+ */
+function getUserById(id) {
+    const query = db.prepare('SELECT * FROM users WHERE id = ?');
+    return query.get(id);
 }
 
 /**
@@ -321,13 +582,25 @@ module.exports = {
     addBooking,
     getBookingsByUserId,
     addRating,
-    getAllBookings,
-    getAllUsers, // Gerekirse admin için
+    getAllBookingsPaginated,
+    countAllBookings,
+    getBookingById,
+    updateBookingStatus,
+    cancelBookingWithRefund,
+    getAllUsers,
     getUserByEmail,
     updateUser,
+    updateUserPassword,
     deleteUser,
     searchUsers,
     searchBookings,
+    getAvailableDrivers,
+    getUserById,
+    getNearbyDrivers,
+    becomeDriver,
+    updateDriverAvailability,
+    deleteDriver,
+
 
     // Cüzdan Fonksiyonları
     addBalance: (userId, amount) => {
@@ -435,5 +708,23 @@ module.exports = {
     getUnpaidBookings: (userId) => {
         const uId = Number(userId);
         return db.prepare("SELECT * FROM bookings WHERE userId = ? AND status = 'Bekliyor' AND price > 0").all(uId);
-    }
+    },
+
+    // Doğrulama Kodu Fonksiyonları
+    addVerificationCode: (email, code, expiresAt) => {
+        const query = db.prepare('INSERT OR REPLACE INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)');
+        return query.run(email, code, expiresAt);
+    },
+
+    getVerificationCode: (email) => {
+        const query = db.prepare('SELECT * FROM verification_codes WHERE email = ?');
+        return query.get(email);
+    },
+
+    deleteVerificationCode: (email) => {
+        const query = db.prepare('DELETE FROM verification_codes WHERE email = ?');
+        return query.run(email);
+    },
+
+    db, // Ham veritabanı erişimi (bakım için)
 };

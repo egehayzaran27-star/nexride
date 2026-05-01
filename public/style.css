@@ -73,6 +73,7 @@ body {
 h1, h2, h3 {
     background: linear-gradient(to right, #818cf8, #c084fc);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
     font-weight: 700;
 }
@@ -155,40 +156,37 @@ input:focus, select:focus {
 /* Navigation */
 .navbar {
     position: fixed;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: calc(100% - 40px);
-    max-width: 1200px;
+    top: 0; left: 0; right: 0;
     height: 70px;
-    background: rgba(30, 41, 59, 0.8);
+    background: rgba(15, 23, 42, 0.85);
     backdrop-filter: blur(12px);
-    border: 1px solid var(--border);
-    border-radius: 20px;
+    border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0 30px;
-    z-index: 1000;
+    z-index: 2000;
 }
 
 .nav-brand {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: white;
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: var(--primary);
     text-decoration: none;
+    letter-spacing: -0.5px;
 }
 
 .nav-links {
     display: flex;
-    gap: 20px;
+    gap: 25px;
 }
 
 .nav-link {
     color: var(--text-muted);
     text-decoration: none;
     font-weight: 600;
-    transition: color 0.3s ease;
+    transition: all 0.2s ease;
+    font-size: 0.95rem;
 }
 
 .nav-link:hover, .nav-link.active {
@@ -258,6 +256,15 @@ input:focus, select:focus {
     100% { transform: rotate(360deg); }
 }
 
+@keyframes pulse-ring {
+  0% { transform: scale(0.3); opacity: 1; }
+  100% { transform: scale(1.2); opacity: 0; }
+}
+
+.pulse-ring {
+    animation: pulse-ring 1.5s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+}
+
 .loading-hidden {
     opacity: 0;
     visibility: hidden;
@@ -296,6 +303,9 @@ input:focus, select:focus {
 }
 
 @media (max-width: 768px) {
+    body {
+        padding-top: 80px;
+    }
     .grid {
         grid-template-columns: 1fr !important;
     }
@@ -305,4 +315,172 @@ input:focus, select:focus {
     .nav-links {
         display: none;
     }
+    #map {
+        height: 300px !important;
+    }
+}
+
+/* --- NEW UI COMPONENTS --- */
+
+/* Toast Notifications */
+.toast-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.toast {
+    padding: 14px 20px;
+    border-radius: 12px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(20px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    transform: translateX(120%);
+    opacity: 0;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    min-width: 280px;
+    max-width: 350px;
+    display: flex;
+    align-items: center;
+    font-size: 0.9rem;
+    color: var(--text-main);
+}
+
+.toast.show {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.toast-success { border-left: 4px solid var(--success); }
+.toast-error { border-left: 4px solid var(--error); }
+.toast-info { border-left: 4px solid var(--primary); }
+
+/* Skeleton Loader */
+.skeleton {
+    background: linear-gradient(90deg, 
+        var(--card-bg) 25%, 
+        rgba(255,255,255,0.05) 50%, 
+        var(--card-bg) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 8px;
+    height: 20px;
+    width: 100%;
+}
+
+@keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* Driver Avatar */
+.driver-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: white;
+    background: var(--primary);
+    flex-shrink: 0;
+}
+
+/* Switch Toggle for Driver Availability */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+.switch input { 
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #334155;
+  transition: .4s;
+  border-radius: 34px;
+}
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+input:checked + .slider {
+  background-color: #22c55e;
+}
+input:checked + .slider:before {
+  transform: translateX(20px);
+}
+
+.driver-live-icon {
+    background: none !important;
+    border: none !important;
+}
+
+.driver-live-icon div {
+    animation: pulse 2s infinite;
+    transition: all 0.5s ease-in-out;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+    70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(245, 158, 11, 0); }
+    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}
+
+/* Fix Leaflet Geocoder */
+.leaflet-control-geocoder {
+    background: white !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3) !important;
+}
+
+.leaflet-control-geocoder input {
+    background-color: transparent !important;
+    color: #333 !important;
+    border: none !important;
+    padding: 8px 30px 8px 10px !important;
+    box-shadow: none !important;
+    width: 250px !important; /* Genişletildi */
+    font-size: 14px !important;
+}
+
+.leaflet-control-geocoder-alternatives {
+    background-color: white !important;
+    color: #333 !important;
+    z-index: 99999 !important;
+    border-radius: 8px !important;
+    margin-top: 5px !important;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5) !important;
+}
+
+.leaflet-control-geocoder-alternatives li {
+    color: #333 !important;
+    padding: 8px 10px !important;
+    border-bottom: 1px solid #eee !important;
+}
+.leaflet-control-geocoder-alternatives li:hover {
+    background-color: #f8fafc !important;
 }

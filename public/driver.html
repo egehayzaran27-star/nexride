@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sürücü Paneli | NexRide</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/store.js"></script>
+
+</head>
+<body>
+    <div class="app-container" style="padding-top: 100px;">
+        <div class="grid" style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px;">
+            <!-- Active Requests -->
+            <div class="card fade-in">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div id="locationStatus" class="badge" style="background: rgba(255,255,255,0.05); color: var(--text-muted);">KONUM TAKİBİ BEKLENİYOR...</div>
+                        <div id="onlineStatus" class="badge badge-success">SİSTEMDE AKTİF</div>
+                        <label class="switch">
+                            <input type="checkbox" id="availabilityToggle" checked onchange="toggleAvailability()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+                <div id="requestList" style="display: flex; flex-direction: column; gap: 15px;">
+                    <div class="skeleton" style="height: 100px;"></div>
+                    <div class="skeleton" style="height: 100px;"></div>
+                </div>
+            </div>
+
+            <!-- Stats Sidebar -->
+            <div class="sidebar-info">
+                <div class="card mb-1 fade-in">
+                    <h3><i data-lucide="trending-up"></i> Günlük Kazanç</h3>
+                    <div style="font-size: 2.5rem; font-weight: 700; color: var(--success); margin: 15px 0;">₺0.00</div>
+                    <p class="text-muted" style="font-size: 0.85rem;">Bugün 0 yolculuk tamamlandı.</p>
+                </div>
+                <div class="card fade-in">
+                    <h3><i data-lucide="star"></i> Performans</h3>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-top: 15px;">
+                        <span style="font-size: 1.5rem; font-weight: 700; color: var(--star);">★ 5.0</span>
+                        <span class="text-muted" style="font-size: 0.8rem;">(0 değerlendirme)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sürücü Kayıt Modalı -->
+    <div id="driverRegModal" class="modal" style="display: none; align-items: center; justify-content: center;">
+        <div class="card" style="max-width: 500px; width: 90%;">
+            <h2 style="margin-bottom: 10px;">Sürücü Profilini Oluştur</h2>
+            <p class="text-muted" style="margin-bottom: 25px;">Sistemde sürücü olarak yer almak için araç bilgilerini giriniz.</p>
+            
+            <form id="driverRegForm" onsubmit="registerDriver(event)">
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label>Ad Soyad</label>
+                    <input type="text" id="driverName" required placeholder="Örn: Ege Hayzaran">
+                </div>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label>Araç Modeli</label>
+                    <input type="text" id="carModel" required placeholder="Örn: Toyota Corolla 2023">
+                </div>
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label>Plaka</label>
+                    <input type="text" id="plate" required placeholder="Örn: 06 ABC 123">
+                </div>
+                
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Başvuruyu Tamamla</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let socket, locationInterval;
+
+        async function init() {
+            const user = Store.getUser();
+            if (!user) return window.location.href = '/';
+            
+            Store.renderNavbar();
+            loadRequests();
+            
+            // Socket.io Bağlantısı
+            socket = io();
+            socket.emit('join', { userId: user.id, role: user.role, isDriver: user.isDriver });
+
+            // Sürücü Bilgilerini Al ve Takibi Başlat
+            const driverRes = await Store.api(`/api/drivers`);
+            const drivers = await driverRes.json();
+            const myDriver = drivers.find(d => d.userId === user.id);
+            if (myDriver) {
+                startLocationTracking(myDriver.id);
+            } else {
+                document.getElementById('driverRegModal').style.display = 'flex';
+                // Mevcut adı önizleme olarak koy
+                document.getElementById('driverName').value = `${user.firstName} ${user.lastName}`;
+            }
+
+            // Yeni talep geldiğinde listeyi yenile
+            socket.on('booking:new-request', (data) => {
+                Store.playSound('new_request');
+                showToast('Yeni bir yolculuk talebi geldi!', 'info');
+                loadRequests();
+            });
+
+            lucide.createIcons();
+        }
+
+        let currentLat = 39.9334, currentLng = 32.8597; // Başlangıç konumu (Ankara)
+
+        function startLocationTracking(driverId) {
+            // Her 5 saniyede bir simüle edilmiş konum gönder (30 km/saat hızla)
+            locationInterval = setInterval(() => {
+                // 30 km/saat = ~8.3 m/s. 5 saniyede ~41.5 metre.
+                // Derece cinsinden yaklaşık değişim: 0.00037
+                // Rastgele hafif yön değişimleri ile hareket etsin
+                currentLat += (Math.random() * 0.0002 + 0.0003); 
+                currentLng += (Math.random() * 0.0002 + 0.0003);
+
+                console.log('📤 Simüle edilmiş konum gönderiliyor:', currentLat, currentLng);
+                socket.emit('driver:location-update', {
+                    driverId,
+                    lat: currentLat,
+                    lng: currentLng
+                });
+                
+                const status = document.getElementById('locationStatus');
+                status.textContent = 'SİMÜLE HAREKET (30 KM/S)';
+                status.style.color = '#3b82f6';
+                status.style.background = 'rgba(59, 130, 246, 0.1)';
+            }, 5000);
+        }
+
+        async function loadRequests() {
+            // Sürücüye özel bekleyen rezervasyonları çek (Simüle edilmiş veya API'den)
+            // Şimdilik genel "Bekliyor" olanları çekelim
+            const res = await Store.api('/api/bookings/all');
+            const data = await res.json();
+            const bookings = data.bookings ? data.bookings : data;
+            
+            const list = document.getElementById('requestList');
+            const pending = bookings.filter(b => b.status === 'Bekliyor' || b.status === 'Ödendi');
+            
+            if (pending.length === 0) {
+                list.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: var(--text-muted);">
+                        <i data-lucide="coffee" style="width: 48px; height: 48px; margin-bottom: 15px; opacity: 0.5;"></i>
+                        <p>Şu an aktif talep bulunmuyor. Yeni talepler burada görünecek.</p>
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+            list.innerHTML = pending.map(b => {
+                const pickupCoords = b.pickupLocation ? b.pickupLocation.split(',') : null;
+                const destCoords = b.destination ? b.destination.split(',') : null;
+                
+                const pickupNav = pickupCoords ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(pickupCoords[0].trim())},${encodeURIComponent(pickupCoords[1].trim())}` : '#';
+                const destNav = destCoords ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destCoords[0].trim())},${encodeURIComponent(destCoords[1].trim())}` : '#';
+
+                return `
+                <div class="card" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); padding: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
+                        <div>
+                            <div style="font-weight: 700; font-size: 1.1rem; color: white;">${b.firstName} ${b.lastName}</div>
+                            <div style="font-size: 0.8rem; color: var(--success); margin-top: 5px;">
+                                <i data-lucide="map-pin" style="width:12px; height:12px;"></i> Alınacak: ${b.pickupLocation || 'Belirtilmedi'}
+                            </div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted);">
+                                <i data-lucide="flag" style="width:12px; height:12px;"></i> Varış: ${b.destination}
+                            </div>
+                        </div>
+                        <div style="font-weight: 700; color: var(--primary); font-size: 1.2rem;">${Store.formatCurrency(b.price)}</div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                        <button onclick="updateStatus(${b.id}, 'Yolda')" class="btn btn-primary btn-sm">Kabul Et</button>
+                        <button onclick="updateStatus(${b.id}, 'İptal Edildi')" class="btn btn-secondary btn-sm" style="background: transparent; border: 1px solid var(--error); color: var(--error);">Reddet</button>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <a href="${pickupNav}" target="_blank" class="btn btn-secondary btn-sm" style="font-size: 0.7rem;">
+                            <i data-lucide="navigation"></i> Müşteriye Git
+                        </a>
+                        <a href="${destNav}" target="_blank" class="btn btn-secondary btn-sm" style="font-size: 0.7rem;">
+                            <i data-lucide="map"></i> Hedefe Git
+                        </a>
+                    </div>
+                </div>
+            `}).join('');
+            lucide.createIcons();
+        }
+
+        async function toggleAvailability() {
+            const isAvailable = document.getElementById('availabilityToggle').checked;
+            const badge = document.getElementById('onlineStatus');
+            
+            const res = await Store.api('/api/drivers/availability', {
+                method: 'PATCH',
+                body: JSON.stringify({ isAvailable })
+            });
+
+            if (res.ok) {
+                badge.textContent = isAvailable ? 'SİSTEMDE AKTİF' : 'ÇEVRİMDIŞI';
+                badge.className = `badge ${isAvailable ? 'badge-success' : 'badge-error'}`;
+                showToast(isAvailable ? 'Artık talep alabilirsiniz.' : 'Çevrimdışı oldunuz.', 'info');
+            }
+        }
+
+        async function updateStatus(id, status) {
+            const res = await Store.api(`/api/bookings/${id}/status`, {
+                method: 'PATCH',
+                body: JSON.stringify({ status })
+            });
+
+            if (res.ok) {
+                showToast(`Durum güncellendi: ${status}`, 'success');
+                loadRequests();
+            } else {
+                showToast('Güncelleme hatası', 'error');
+            }
+        }
+
+        async function registerDriver(event) {
+            event.preventDefault();
+            const data = {
+                name: document.getElementById('driverName').value,
+                carModel: document.getElementById('carModel').value,
+                plate: document.getElementById('plate').value
+            };
+
+            const res = await Store.api('/api/drivers/become-driver', {
+                method: 'POST',
+                body: JSON.stringify(data)
+            });
+
+            if (res.ok) {
+                showToast('Sürücü profiliniz oluşturuldu!', 'success');
+                setTimeout(() => window.location.reload(), 1500);
+            } else {
+                const err = await res.json();
+                showToast(err.error || 'Başvuru sırasında hata oluştu.', 'error');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

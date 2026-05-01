@@ -3,16 +3,43 @@ const express = require('express');
 const path = require('path');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const winston = require('winston');
 const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
+const nodemailer = require('nodemailer');
 const userDb = require('./user-db');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret';
+
+// Trust Proxy: Ngrok veya benzeri proxy arkasındayken IP adreslerini doğru almak için
+app.set('trust proxy', 1);
+
+// Winston Logger Setup
+const logger = winston.createLogger({
+    level: 'info',
+    format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.json()
+    ),
+    transports: [
+        new winston.transports.File({ filename: 'error.log', level: 'error' }),
+        new winston.transports.File({ filename: 'combined.log' }),
+        new winston.transports.Console({
+            format: winston.format.combine(
+                winston.format.colorize(),
+                winston.format.simple()
+            )
+        })
+    ]
+});
+
+// App-wide logger access
+app.locals.logger = logger;
 
 // Security Middlewares
 app.use(helmet({
-    contentSecurityPolicy: false, // Leaflet için CSP'yi esnetiyoruz
+    contentSecurityPolicy: false,
 }));
 app.use(morgan('dev'));
 app.use(express.json());
@@ -21,153 +48,44 @@ app.use(express.urlencoded({ extended: true }));
 // Statik dosyalar
 app.use(express.static(path.join(__dirname, 'public')));
 
-// JWT Middleware
-const authMiddleware = (req, res, next) => {
-    const token = req.headers['authorization']?.split(' ')[1];
-    if (!token) return res.status(401).json({ error: 'Yetkisiz erişim.' });
+// MODÜLER ROUTE'LAR
+const authRoutes = require('./src/routes/auth.routes');
+const bookingRoutes = require('./src/routes/booking.routes');
+const driverRoutes = require('./src/routes/driver.routes');
+const walletRoutes = require('./src/routes/wallet.routes');
+const adminRoutes = require('./src/routes/admin.routes');
+const { errorHandler, notFoundHandler } = require('./src/middleware/error.middleware');
+const { initSocket } = require('./src/services/socket.service');
 
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        req.user = decoded;
-        next();
-    } catch (err) {
-        res.status(401).json({ error: 'Geçersiz token.' });
-    }
-};
+// Root API montajı
+app.use('/api', authRoutes);
+app.use('/api/bookings', bookingRoutes);
+app.use('/api/drivers', driverRoutes);
+app.use('/api/wallet', walletRoutes);
+app.use('/api', adminRoutes);
 
-/**
- * Kimlik Doğrulama Simülasyonu
- */
-async function verifyWithNVI(tcNo) {
-    return new Promise((resolve, reject) => {
-        setTimeout(() => {
-            if (tcNo.length === 11) resolve(true);
-            else reject(new Error('Geçersiz TC Kimlik Numarası formatı.'));
-        }, 1000);
+// Geriye dönük uyumluluk için ana dizindeki /api/send-email (eğer gerekirse)
+app.post('/api/send-email', (req, res) => res.redirect(307, '/api/wallet/send-email'));
+
+// Error Handling (Route'lardan sonra gelmeli)
+app.use(notFoundHandler);
+app.use(errorHandler);
+
+// HTTP Server & Socket.io başlatma
+const http = require('http');
+const server = http.createServer(app);
+const io = initSocket(server);
+
+// App genelinde io erişimi
+app.set('io', io);
+
+// Sunucuyu başlat
+if (require.main === module) {
+    server.listen(PORT, '0.0.0.0', () => {
+        logger.info(`🚀 Sunucu Hazır: http://localhost:${PORT}`);
+        logger.info(`📂 Mod: ${process.env.NODE_ENV || 'development'}`);
     });
 }
 
-/**
- * AUTH ROUTES
- */
-app.post('/api/register', async (req, res) => {
-    const { firstName, lastName, email, tcNo, password } = req.body;
-    
-    if (!firstName || !lastName || !email || !tcNo || !password) {
-        return res.status(400).json({ success: false, error: 'Tüm alanlar zorunludur.' });
-    }
+module.exports = app;
 
-    try {
-        await verifyWithNVI(tcNo);
-        const result = await userDb.addUser(req.body);
-        
-        if (result.success) {
-            res.status(201).json({ success: true, message: 'Kayıt başarılı.' });
-        } else {
-            res.status(400).json({ success: false, error: result.error });
-        }
-    } catch (error) {
-        res.status(400).json({ success: false, error: error.message });
-    }
-});
-
-app.post('/api/login', async (req, res) => {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-        return res.status(400).json({ success: false, error: 'E-posta ve şifre gereklidir.' });
-    }
-
-    const result = await userDb.checkUserCredentials(email, password);
-
-    if (result.success) {
-        const token = jwt.sign(
-            { id: result.user.id, email: result.user.email, role: result.user.role },
-            JWT_SECRET,
-            { expiresIn: '24h' }
-        );
-        res.json({ success: true, user: result.user, token });
-    } else {
-        res.status(401).json({ success: false, error: result.error });
-    }
-});
-
-/**
- * DATA ROUTES
- */
-app.get('/api/drivers', async (req, res) => {
-    const drivers = userDb.getDriversWithAvgRatings();
-    res.json(drivers);
-});
-
-app.get('/api/my-bookings/:userId', async (req, res) => {
-    const bookings = userDb.getBookingsByUserId(req.params.userId);
-    res.json(bookings);
-});
-
-app.post('/api/bookings', async (req, res) => {
-    const result = userDb.addBooking(req.body);
-    if (result.success) res.status(201).json(result);
-    else res.status(400).json(result);
-});
-
-app.post('/api/ratings', async (req, res) => {
-    const result = userDb.addRating(req.body);
-    if (result.success) res.status(201).json(result);
-    else res.status(400).json(result);
-});
-
-/**
- * WALLET ROUTES
- */
-app.get('/api/wallet/balance/:userId', async (req, res) => {
-    const balance = userDb.getUserBalance(req.params.userId);
-    res.json({ balance });
-});
-
-app.post('/api/wallet/deposit', async (req, res) => {
-    const { userId, amount } = req.body;
-    const result = userDb.addBalance(userId, amount);
-    if (result.success) res.json(result);
-    else res.status(400).json(result);
-});
-
-app.post('/api/wallet/transfer', async (req, res) => {
-    const { fromUserId, toEmail, amount } = req.body;
-    const result = userDb.transferMoney(fromUserId, toEmail, amount);
-    if (result.success) res.json(result);
-    else res.status(400).json(result);
-});
-
-app.get('/api/wallet/transactions/:userId', async (req, res) => {
-    const transactions = userDb.getTransactions(req.params.userId);
-    res.json(transactions);
-});
-
-app.post('/api/wallet/pay', async (req, res) => {
-    const { userId, bookingId, method } = req.body;
-    const result = userDb.payForBooking(userId, bookingId, method);
-    if (result.success) res.json(result);
-    else res.status(400).json(result);
-});
-
-/**
- * ADMIN ROUTES
- */
-app.get('/api/users', async (req, res) => {
-    const { q } = req.query;
-    const users = q ? userDb.searchUsers(q) : userDb.getAllUsers();
-    res.json(users);
-});
-
-app.get('/api/all-bookings', async (req, res) => {
-    const { q } = req.query;
-    const bookings = q ? userDb.searchBookings(q) : userDb.getAllBookings();
-    res.json(bookings);
-});
-
-// Sunucuyu başlat
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n🚀 Sunucu Hazır: http://localhost:${PORT}`);
-    console.log(`📂 Mod: ${process.env.NODE_ENV}\n`);
-});

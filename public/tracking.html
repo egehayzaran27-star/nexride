@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canlı Takip | NexRide</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="/style.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/store.js"></script>
+    <style>
+        #map { height: 100vh; width: 100%; z-index: 1; }
+        .tracking-overlay {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            width: 90%;
+            max-width: 500px;
+        }
+        .tracking-bottom {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            width: 90%;
+            max-width: 500px;
+        }
+        .status-badge {
+            background: var(--primary);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 0.8rem;
+            box-shadow: 0 4px 15px var(--primary)40;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .driver-info-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+        }
+    </style>
+</head>
+<body>
+    <div id="loading" class="loading-overlay"><div class="spinner"></div></div>
+
+    <div id="map"></div>
+
+    <div class="tracking-overlay text-center">
+        <div class="status-badge">
+            <div class="pulse-ring"></div>
+            CANLI TAKİP AKTİF
+        </div>
+    </div>
+
+    <div class="tracking-bottom">
+        <div class="driver-info-card">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
+                <div style="display: flex; gap: 15px; align-items: center;">
+                    <div id="driverInitial" style="width: 50px; height: 50px; background: var(--primary); border-radius: 15px; display: flex; align-items: center; justify-content: center; font-weight: 800; color: white; font-size: 1.2rem;">?</div>
+                    <div>
+                        <div id="driverName" style="font-weight: 700; font-size: 1.1rem; color: white;">Yükleniyor...</div>
+                        <div id="carInfo" style="font-size: 0.8rem; color: var(--text-muted);">...</div>
+                    </div>
+                </div>
+                <div style="text-align: right;">
+                    <div id="liveDistance" style="font-size: 1.5rem; font-weight: 800; color: var(--primary-light);">...</div>
+                    <div style="font-size: 0.6rem; color: var(--text-muted); letter-spacing: 1px;">KALAN MESAFE</div>
+                </div>
+            </div>
+
+            <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 15px; display: flex; align-items: center; gap: 12px;">
+                <i data-lucide="map-pin" style="color: var(--success); width: 20px;"></i>
+                <div style="font-size: 0.85rem; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" id="destInfo">
+                    Varış: ...
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px;">
+                <button onclick="window.location.href='/index.html'" class="btn btn-secondary" style="background: rgba(255,255,255,0.05);">
+                    <i data-lucide="home" style="width: 16px;"></i> Ana Sayfa
+                </button>
+                <button onclick="window.location.reload()" class="btn btn-secondary" style="background: rgba(255,255,255,0.05);">
+                    <i data-lucide="refresh-cw" style="width: 16px;"></i> Yenile
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let map, driverMarker, pickupMarker, destMarker, bookingId, socket;
+        const TAXI_STATIONS = [
+            { id: 1, name: "Kızılay Merkez Taksi", lat: 39.9208, lng: 32.8541 },
+            { id: 2, name: "Tunalı Hilmi Taksi", lat: 39.9075, lng: 32.8625 },
+            { id: 3, name: "Bahçelievler 7. Cad. Taksi", lat: 39.9247, lng: 32.8228 },
+            { id: 4, name: "Çankaya Atakule Taksi", lat: 39.8860, lng: 32.8548 },
+            { id: 5, name: "Esat Dörtyol Taksi", lat: 39.9110, lng: 32.8690 },
+            { id: 6, name: "Yenimahalle Metro Taksi", lat: 39.9670, lng: 32.8020 },
+            { id: 7, name: "Keçiören Belediye Taksi", lat: 39.9780, lng: 32.8650 },
+            { id: 8, name: "Anıttepe Taksi", lat: 39.9270, lng: 32.8420 }
+        ];
+        
+        async function init() {
+            const urlParams = new URLSearchParams(window.location.search);
+            bookingId = urlParams.get('id');
+            
+            if (!bookingId) {
+                window.location.href = '/index.html';
+                return;
+            }
+
+            const user = Store.getUser();
+            if (!user) {
+                window.location.href = '/';
+                return;
+            }
+
+            await loadBookingDetails();
+            initMap();
+            
+            startSimulation();
+
+            document.getElementById('loading').classList.add('loading-hidden');
+            lucide.createIcons();
+        }
+
+        async function loadBookingDetails() {
+            const user = Store.getUser();
+            const res = await Store.api(`/api/bookings/my-bookings/${user.id}`);
+            const bookings = await res.json();
+            const b = bookings.find(x => x.id == bookingId);
+            
+            if (!b) {
+                showToast('Yolculuk bulunamadı.', 'error');
+                setTimeout(() => window.location.href = '/index.html', 2000);
+                return;
+            }
+
+            document.getElementById('driverName').textContent = b.driverName || 'Sürücü Atanıyor';
+            document.getElementById('carInfo').textContent = `${b.carModel || ''} • ${b.plate || ''}`;
+            document.getElementById('destInfo').textContent = `Varış: ${b.destination}`;
+            document.getElementById('driverInitial').textContent = (b.driverName || '?')[0];
+            
+            window.currentBooking = b;
+        }
+
+        function initMap() {
+            map = L.map('map', { zoomControl: false }).setView([39.9334, 32.8597], 15);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+            const b = window.currentBooking;
+            const bounds = [];
+
+            if (b.pickupLocation) {
+                const pCoords = b.pickupLocation.split(',').map(c => parseFloat(c.trim()));
+                if (pCoords.length === 2) {
+                    pickupMarker = L.marker(pCoords, {
+                        icon: L.divIcon({
+                            className: 'pickup-icon',
+                            html: `<div id="passengerIcon" style="background:var(--success); color:white; border-radius:50%; width:30px; height:30px; display:flex; align-items:center; justify-content:center; border:2px solid white; box-shadow:0 0 15px var(--success); transition: all 0.5s ease;">👤</div>`
+                        })
+                    }).addTo(map);
+                    bounds.push(pCoords);
+                }
+            }
+
+            if (b.destination) {
+                const dCoords = b.destination.split(',').map(c => parseFloat(c.trim()));
+                if (dCoords.length === 2) {
+                    destMarker = L.marker(dCoords, {
+                        icon: L.divIcon({
+                            className: 'dest-icon',
+                            html: `<div style="background:var(--secondary); color:white; border-radius:50%; width:30px; height:30px; display:flex; align-items:center; justify-content:center; border:2px solid white; box-shadow:0 0 15px var(--secondary);">📍</div>`
+                        })
+                    }).addTo(map);
+                    bounds.push(dCoords);
+                }
+            }
+
+            if (bounds.length > 0) {
+                map.fitBounds(bounds, { padding: [100, 100] });
+            }
+        }
+
+        function calculateLiveDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3;
+            const φ1 = lat1 * Math.PI/180;
+            const φ2 = lat2 * Math.PI/180;
+            const Δφ = (lat2-lat1) * Math.PI/180;
+            const Δλ = (lon2-lon1) * Math.PI/180;
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        async function startSimulation() {
+            const b = window.currentBooking;
+            if (!b || window.isSimulating) return;
+            window.isSimulating = true;
+
+            const pickupPos = pickupMarker ? pickupMarker.getLatLng() : { lat: 39.9105, lng: 32.7572 };
+            const destPos = destMarker ? destMarker.getLatLng() : { lat: 39.8756, lng: 32.8440 };
+
+            let startStation = TAXI_STATIONS[0];
+            let minDist = Infinity;
+            TAXI_STATIONS.forEach(s => {
+                const d = calculateLiveDistance(s.lat, s.lng, pickupPos.lat, pickupPos.lng);
+                if (d < minDist) {
+                    minDist = d;
+                    startStation = s;
+                }
+            });
+
+            if (driverMarker) map.removeLayer(driverMarker);
+            driverMarker = L.marker([startStation.lat, startStation.lng], {
+                icon: L.divIcon({
+                    className: 'driver-live-icon',
+                    html: `
+                        <div style="position:relative;">
+                            <div class="pulse-ring" style="position:absolute; top:-10px; left:-10px; width:54px; height:54px; background:rgba(245,158,11,0.4); border-radius:50%;"></div>
+                            <div style="background:#f59e0b; color:white; border-radius:15px; width:40px; height:40px; display:flex; align-items:center; justify-content:center; box-shadow:0 0 25px rgba(245,158,11,0.7); border:2.5px solid white; position:relative; z-index:2; font-size:1.4rem;">🚕</div>
+                        </div>
+                    `
+                })
+            }).addTo(map);
+
+            const simulationSpeed = 80; // Hız 80 km/h yapıldı
+
+            if (pickupMarker) {
+                document.getElementById('driverStatusTitle').textContent = 'Sürücü Yolda';
+                document.getElementById('driverStatusInfo').textContent = 'Sizi almaya geliyor...';
+                await moveMarker(driverMarker, startStation, pickupPos, simulationSpeed);
+            }
+
+            showToast('Sürücü ulaştı! Yolculuk başlıyor.', 'success');
+            document.getElementById('driverStatusTitle').textContent = 'Yolculuk Başladı';
+            document.getElementById('driverStatusInfo').textContent = 'Hedefe doğru ilerliyorsunuz...';
+            
+            if (pickupMarker) pickupMarker.getElement().style.opacity = '0';
+
+            await moveMarker(driverMarker, pickupPos, destPos, simulationSpeed, !!pickupMarker);
+
+            document.getElementById('driverStatusTitle').textContent = 'Varıldı';
+            document.getElementById('driverStatusInfo').textContent = 'Hedefe ulaşıldı.';
+            document.getElementById('liveDistance').textContent = '0 m';
+            showToast('Hedefe vardınız!', 'success');
+            Store.playSound('success');
+            window.isSimulating = false;
+        }
+
+        function moveMarker(marker, start, end, speedKmh, movePassenger = false) {
+            return new Promise(resolve => {
+                const startLat = start.lat || start[0];
+                const startLng = start.lng || start[1];
+                const endLat = end.lat || end[0];
+                const endLng = end.lng || end[1];
+
+                const totalDist = calculateLiveDistance(startLat, startLng, endLat, endLng);
+                const duration = (totalDist / (speedKmh * 1000 / 3600)) * 1000; // ms
+                const startTime = performance.now();
+
+                function animate(currentTime) {
+                    const elapsed = currentTime - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+
+                    const curLat = startLat + (endLat - startLat) * progress;
+                    const curLng = startLng + (endLng - startLng) * progress;
+                    const curPos = [curLat, curLng];
+
+                    marker.setLatLng(curPos);
+                    if (movePassenger && pickupMarker) pickupMarker.setLatLng(curPos);
+                    
+                    map.setView(curPos, map.getZoom(), { animate: false });
+
+                    const remainingDist = totalDist * (1 - progress);
+                    const distText = remainingDist > 1000 ? (remainingDist/1000).toFixed(2) + ' km' : Math.round(remainingDist) + ' m';
+                    document.getElementById('liveDistance').textContent = distText;
+
+                    if (progress < 1) {
+                        requestAnimationFrame(animate);
+                    } else {
+                        resolve();
+                    }
+                }
+                requestAnimationFrame(animate);
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

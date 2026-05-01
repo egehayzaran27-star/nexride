@@ -8,6 +8,11 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/style.css">
     <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
     <script src="/store.js"></script>
 </head>
 <body style="background: #020617;">
@@ -110,6 +115,40 @@
             </div>
 
         </div>
+
+        <!-- Sürücü Yönetimi Bölümü -->
+        <div class="card" style="max-width: none; margin-top: 30px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+                <h2 style="display: flex; align-items: center; gap: 10px;"><i data-lucide="car"></i> Sürücü Yönetimi & Canlı Takip</h2>
+                <div style="font-size: 0.8rem; color: var(--text-muted);">Sistemdeki aktif ve pasif tüm sürücüler</div>
+            </div>
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                    <thead>
+                        <tr style="text-align: left; border-bottom: 1px solid var(--border); color: var(--text-muted);">
+                            <th style="padding: 15px;">SÜRÜCÜ ADI</th>
+                            <th style="padding: 15px;">ARAÇ / PLAKA</th>
+                            <th style="padding: 15px;">DURUM</th>
+                            <th style="padding: 15px;">KONUM (LAT, LNG)</th>
+                            <th style="padding: 15px;">İŞLEM</th>
+                        </tr>
+                    </thead>
+                    <tbody id="driverTableBody">
+                        <!-- Sürücüler -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Taksi Durakları Yönetimi -->
+        <div class="card" style="max-width: none; margin-top: 30px; position: relative;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h2 style="display: flex; align-items: center; gap: 10px;"><i data-lucide="map-pin"></i> Taksi Durakları Yönetimi</h2>
+                <button onclick="toggleMapSize()" class="btn btn-secondary btn-sm" id="mapToggleBtn"><i data-lucide="maximize"></i> Büyüt</button>
+            </div>
+            <div id="adminMap" style="height: 250px; width: 100%; border-radius: 12px; z-index: 1; transition: height 0.3s ease;"></div>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 10px;">Haritaya tıklayarak yeni bir taksi durağı ekleyebilirsiniz.</p>
+        </div>
     </div>
 
     <script>
@@ -128,6 +167,7 @@
             await loadUsers();
             await loadBookings();
             await loadStats();
+            initAdminMap();
             setTimeout(() => document.getElementById('loading').classList.add('loading-hidden'), 500);
         }
 
@@ -151,7 +191,12 @@
 
         async function loadBookings(query = '') {
             const res = await Store.api(`/api/all-bookings${query ? `?q=${query}` : ''}`);
-            const bookings = await res.json();
+            const data = await res.json();
+            
+            // Eğer arama (q) varsa veri doğrudan dizi olarak geliyor olabilir, 
+            // yoksa sayfalama nesnesi { bookings, total... } olarak geliyor.
+            const bookings = Array.isArray(data) ? data : (data.bookings || []);
+            
             const body = document.getElementById('bookingTableBody');
             body.innerHTML = bookings.map(b => {
                 const color = b.status === 'Ödendi' ? 'var(--success)' : 'var(--warning)';
@@ -169,7 +214,7 @@
                 </tr>
                 `;
             }).join('');
-            document.getElementById('statBookings').textContent = bookings.length;
+            document.getElementById('statBookings').textContent = Array.isArray(data) ? data.length : data.total;
             const revenue = bookings.filter(b => b.status === 'Ödendi').reduce((sum, b) => sum + b.price, 0);
             document.getElementById('statRevenue').textContent = Store.formatCurrency(revenue);
         }
@@ -178,6 +223,31 @@
             const res = await Store.api('/api/drivers');
             const drivers = await res.json();
             document.getElementById('statDrivers').textContent = drivers.length;
+
+            const body = document.getElementById('driverTableBody');
+            body.innerHTML = drivers.map(d => `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); transition: 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background='transparent'">
+                    <td style="padding: 15px;">
+                        <div style="font-weight:600; color:white;">${d.name}</div>
+                    </td>
+                    <td style="padding: 15px;">
+                        <div>${d.carModel}</div>
+                        <div style="font-size:0.7rem; color:var(--primary-light); font-weight:700;">${d.plate}</div>
+                    </td>
+                    <td style="padding: 15px;">
+                        <span style="font-size:0.65rem; background:${d.is_available ? 'var(--success)' : 'var(--warning)'}15; color:${d.is_available ? 'var(--success)' : 'var(--warning)'}; padding:4px 10px; border-radius:10px; font-weight:800; border: 1px solid ${d.is_available ? 'var(--success)' : 'var(--warning)'}30;">
+                            ${d.is_available ? 'MÜSAİT' : 'MEŞGUL'}
+                        </span>
+                    </td>
+                    <td style="padding: 15px; font-family: monospace; color: var(--text-muted); font-size: 0.75rem;">
+                        ${d.lat ? `${d.lat.toFixed(4)}, ${d.lng.toFixed(4)}` : 'Konum Yok'}
+                    </td>
+                    <td style="padding: 15px;">
+                        <button onclick="deleteDriver(${d.id})" class="btn btn-danger" style="padding: 6px; background: transparent; border: 1px solid var(--error)30;"><i data-lucide="trash-2" style="width:16px;"></i></button>
+                    </td>
+                </tr>
+            `).join('');
+            lucide.createIcons();
         }
 
         function searchUsers() { loadUsers(document.getElementById('userSearch').value); }
@@ -194,6 +264,140 @@
                 Store.showAlert('Silme işlemi yapılamadı.', 'error');
             }
             setTimeout(() => document.getElementById('loading').classList.add('loading-hidden'), 500);
+        }
+
+        async function deleteDriver(id) {
+            if (!confirm('Bu sürücüyü silmek istediğinize emin misiniz? Sürücü rolü normale dönecektir.')) return;
+            document.getElementById('loading').classList.remove('loading-hidden');
+            const res = await Store.api(`/api/drivers/${id}`, { method: 'DELETE' });
+            if (res.ok) {
+                Store.showAlert('Sürücü başarıyla silindi.', 'success');
+                await loadStats();
+            } else {
+                Store.showAlert('Sürücü silinemedi.', 'error');
+            }
+            setTimeout(() => document.getElementById('loading').classList.add('loading-hidden'), 500);
+        }
+
+        let adminMap;
+        let isMapExpanded = false;
+
+        async function initAdminMap() {
+            adminMap = L.map('adminMap', { attributionControl: false }).setView([39.9334, 32.8597], 12);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(adminMap);
+            
+            // Arama Kontrolü
+            L.Control.geocoder({
+                defaultMarkGeocode: false,
+                placeholder: "Durak eklenecek yeri ara..."
+            }).on('markgeocode', function(e) {
+                var bbox = e.geocode.bbox;
+                var poly = L.polygon([
+                    bbox.getSouthEast(),
+                    bbox.getNorthEast(),
+                    bbox.getNorthWest(),
+                    bbox.getSouthWest()
+                ]);
+                adminMap.fitBounds(poly.getBounds());
+            }).addTo(adminMap);
+
+            adminMap.on('click', async (e) => {
+                const name = prompt("Yeni taksi durağının adını girin:");
+                if (name && name.trim() !== '') {
+                    const lat = e.latlng.lat;
+                    const lng = e.latlng.lng;
+                    try {
+                        const res = await Store.api('/api/stations', {
+                            method: 'POST',
+                            body: JSON.stringify({ name, lat, lng })
+                        });
+                        if (res.ok) {
+                            L.circleMarker([lat, lng], { radius: 6, color: '#64748b', fillColor: '#1e293b', fillOpacity: 1, weight: 2 }).addTo(adminMap).bindPopup(`<b>${name}</b>`);
+                            Store.showAlert('Durak başarıyla eklendi.', 'success');
+                        }
+                    } catch(err) {}
+                }
+            });
+
+            try {
+                const res = await Store.api('/api/stations');
+                const stations = await res.json();
+                stations.forEach(s => {
+                    L.circleMarker([s.lat, s.lng], { radius: 6, color: '#64748b', fillColor: '#1e293b', fillOpacity: 1, weight: 2 }).addTo(adminMap).bindPopup(`<b>${s.name}</b>`);
+                });
+            } catch(err) {}
+            
+            // Canlı Takip (Soket)
+            const socket = io();
+            const liveMarkers = {};
+
+            socket.on('driver:moved', (data) => {
+                const { driverId, lat, lng } = data;
+                const id = 'driver_' + driverId;
+                if (!liveMarkers[id]) {
+                    liveMarkers[id] = L.circleMarker([lat, lng], { radius: 8, color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.9, weight: 2 }).addTo(adminMap).bindPopup(`<b>Sürücü ${driverId}</b>`);
+                } else {
+                    liveMarkers[id].setLatLng([lat, lng]);
+                }
+            });
+
+            socket.on('user:moved', (data) => {
+                const { userId, userName, lat, lng } = data;
+                const id = 'user_' + userId;
+                if (!liveMarkers[id]) {
+                    liveMarkers[id] = L.circleMarker([lat, lng], { radius: 6, color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.9, weight: 2 }).addTo(adminMap).bindPopup(`<b>Kullanıcı: ${userName}</b>`);
+                } else {
+                    liveMarkers[id].setLatLng([lat, lng]);
+                }
+            });
+
+            // Kendi (Admin) Konumunu İzle
+            if ("geolocation" in navigator) {
+                const u = Store.getUser();
+                if (u && socket) {
+                    // Admin için özel marker oluştur
+                    socket.emit('join', { userId: u.id, role: u.role });
+                    
+                    navigator.geolocation.watchPosition((pos) => {
+                        const lat = pos.coords.latitude;
+                        const lng = pos.coords.longitude;
+                        
+                        // Konumu haritada göster (eğer yoksa ekle)
+                        if (!liveMarkers['admin']) {
+                            liveMarkers['admin'] = L.circleMarker([lat, lng], { radius: 8, color: '#10b981', fillColor: '#10b981', fillOpacity: 0.9, weight: 3 }).addTo(adminMap).bindPopup(`<b>Siz (Admin)</b>`);
+                            adminMap.setView([lat, lng], 13);
+                        } else {
+                            liveMarkers['admin'].setLatLng([lat, lng]);
+                        }
+                        
+                        // Adminin kendi konumunu da yayması
+                        socket.emit('user:location-update', { 
+                            userId: u.id, 
+                            userName: u.firstName + ' ' + u.lastName + ' (Admin)', 
+                            lat: lat, 
+                            lng: lng 
+                        });
+                    }, (err) => console.log('Admin konum hatası', err), { enableHighAccuracy: true });
+                }
+            }
+
+            // Fix map tiles for dark theme
+            document.querySelector('#adminMap .leaflet-tile-pane').style.filter = 'brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7)';
+        }
+
+        function toggleMapSize() {
+            const mapDiv = document.getElementById('adminMap');
+            const btn = document.getElementById('mapToggleBtn');
+            isMapExpanded = !isMapExpanded;
+            if (isMapExpanded) {
+                mapDiv.style.height = '600px';
+                btn.innerHTML = '<i data-lucide="minimize"></i> Küçült';
+            } else {
+                mapDiv.style.height = '250px';
+                btn.innerHTML = '<i data-lucide="maximize"></i> Büyüt';
+            }
+            lucide.createIcons();
+            setTimeout(() => adminMap.invalidateSize(), 300);
         }
 
         window.onload = init;

@@ -35,7 +35,7 @@
                         </div>
                     </div>
 
-                    <div style="text-align: left; background: rgba(0,0,0,0.2); padding: 20px; border-radius: 15px;">
+                    <div style="text-align: left; background: rgba(0,0,0,0.2); padding: 20px; border-radius: 15px; margin-bottom: 20px;">
                         <div style="margin-bottom: 15px;">
                             <div class="mb-1 text-muted" style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;">TC KİMLİK NUMARASI</div>
                             <div id="userTc" style="font-weight: 600; color: white;">-</div>
@@ -45,6 +45,10 @@
                             <div id="userCreated" style="font-weight: 600; color: white;">-</div>
                         </div>
                     </div>
+
+                    <a href="/profile.html" class="btn btn-secondary" style="width: 100%; font-size: 0.85rem;">
+                        <i data-lucide="settings" style="width: 16px;"></i> Profili Düzenle
+                    </a>
                 </div>
             </div>
 
@@ -115,7 +119,7 @@
 
         async function loadBookings() {
             const user = Store.getUser();
-            const res = await Store.api(`/api/my-bookings/${user.id}`);
+            const res = await Store.api(`/api/bookings/my-bookings/${user.id}`);
             const bookings = await res.json();
             const list = document.getElementById('fullBookingList');
             document.getElementById('tripCount').textContent = bookings.length;
@@ -201,7 +205,7 @@
 
         document.getElementById('submitRatingBtn').addEventListener('click', async () => {
             if (currentRatingData.score === 0) {
-                return Store.showAlert('Lütfen en az 1 yıldız verin.', 'error');
+                return showToast('Lütfen en az 1 yıldız verin.', 'error');
             }
 
             document.getElementById('loading').classList.remove('loading-hidden');
@@ -217,12 +221,12 @@
             });
 
             if (res.ok) {
-                Store.showAlert('Geri bildiriminiz için teşekkürler!', 'success');
+                showToast('Geri bildiriminiz için teşekkürler!', 'success');
                 closeRatingModal();
                 await loadBookings();
             } else {
                 const data = await res.json();
-                Store.showAlert(data.error, 'error');
+                showToast(data.error, 'error');
             }
             setTimeout(() => document.getElementById('loading').classList.add('loading-hidden'), 500);
         });
