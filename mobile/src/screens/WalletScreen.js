@@ -1,12 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Alert, ActivityIndicator, Modal } from 'react-native';
-import axios from 'axios';
-import { useStore, BASE_URL } from '../store/useStore';
+import apiClient from '../api/client';
+import { useStore } from '../store/useStore';
 import { useFocusEffect } from '@react-navigation/native';
 
 export default function WalletScreen() {
   const user = useStore((state) => state.user);
-  const token = useStore((state) => state.token);
   const setUser = useStore((state) => state.setUser);
   
   const [balance, setBalance] = useState(user?.balance || 0);
@@ -23,14 +22,16 @@ export default function WalletScreen() {
   const fetchData = useCallback(async () => {
     try {
       const [balRes, transRes] = await Promise.all([
-        axios.get(`${BASE_URL}/wallet/balance/${user.id}`, { headers: { Authorization: `Bearer ${token}` } }),
-        axios.get(`${BASE_URL}/wallet/transactions/${user.id}`, { headers: { Authorization: `Bearer ${token}` } })
+        apiClient.get(`/wallet/balance/${user.id}`),
+        apiClient.get(`/wallet/transactions/${user.id}`)
       ]);
       setBalance(balRes.data.balance);
       setHistory(transRes.data.transactions || []);
       setUser({ ...user, balance: balRes.data.balance });
-    } catch (e) {}
-  }, [user.id, token]);
+    } catch (e) {
+      console.error('Bakiye yükleme hatası:', e);
+    }
+  }, [user.id]);
 
   useFocusEffect(useCallback(() => { fetchData(); }, [fetchData]));
 
@@ -40,9 +41,9 @@ export default function WalletScreen() {
 
     setLoading(true);
     try {
-      const res = await axios.post(`${BASE_URL}/wallet/add-balance`, {
+      const res = await apiClient.post('/wallet/add-balance', {
         userId: user.id, amount: parseFloat(amount), cardNumber, expiry, cvv
-      }, { headers: { Authorization: `Bearer ${token}` } });
+      });
       
       if (res.data.success) {
         Alert.alert('Başarılı', 'Bakiye yüklendi.');
@@ -51,6 +52,7 @@ export default function WalletScreen() {
         fetchData();
       }
     } catch (e) {
+      console.error('Ödeme hatası:', e);
       Alert.alert('Hata', 'Ödeme işlemi başarısız.');
     } finally {
       setLoading(false);

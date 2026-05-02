@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ScrollView, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import axios from 'axios';
-import { useStore, BASE_URL } from '../store/useStore';
+import apiClient from '../api/client';
+import { useStore } from '../store/useStore';
 import { useNavigation } from '@react-navigation/native';
 
 export default function ProfileScreen() {
   const user = useStore((state) => state.user);
-  const token = useStore((state) => state.token);
   const logout = useStore((state) => state.logout);
+  const setUser = useStore((state) => state.setUser);
   const navigation = useNavigation();
 
   const [carModel, setCarModel] = useState('');
@@ -21,18 +21,16 @@ export default function ProfileScreen() {
     
     setLoading(true);
     try {
-      const res = await axios.post(`${BASE_URL}/drivers/become-driver`, {
+      await apiClient.post('/drivers/become-driver', {
         name: `${user.firstName} ${user.lastName}`,
         carModel,
         plate
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
       });
       
       Alert.alert('Başarılı', 'Artık bir NexRide sürücüsüsünüz! Sürücü paneline geçebilirsiniz.');
       setShowApply(false);
       // Kullanıcı rolünü güncelle
-      useStore.setState({ user: { ...user, role: 'driver', isDriver: true } });
+      setUser({ ...user, role: 'driver', isDriver: true });
     } catch (e) {
       Alert.alert('Hata', e.response?.data?.error || 'Başvuru sırasında bir sorun oluştu.');
     } finally {

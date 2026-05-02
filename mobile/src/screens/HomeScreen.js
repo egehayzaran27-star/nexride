@@ -15,9 +15,10 @@ import {
 import MapView, { Marker, AnimatedRegion } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { io } from 'socket.io-client';
-import axios from 'axios';
+import apiClient from '../api/client';
 import { useStore, BASE_URL, SOCKET_URL } from '../store/useStore';
 import { Ionicons } from '@expo/vector-icons';
+import { FlatList } from 'react-native-gesture-handler';
 
 const TAXI_STATIONS = [
   { id: 1, name: "Kızılay Merkez Taksi", lat: 39.9208, lng: 32.8541 },
@@ -55,37 +56,42 @@ export default function HomeScreen() {
   const [rating, setRating] = useState(5);
   const [lastBookingId, setLastBookingId] = useState(null);
 
+  const socketRef = useRef(null);
   const token = useStore((state) => state.token);
   const user = useStore((state) => state.user);
 
   const loadDrivers = async () => {
     try {
-      const res = await axios.get(`${BASE_URL}/drivers/available`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await apiClient.get('/drivers/available');
       if (Array.isArray(res.data)) {
         // Kendini listeden çıkar
         setDrivers(res.data.filter(d => d.id !== user.id));
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('Sürücüler yüklenemedi:', e);
+    }
   };
 
-  const handleMapPress = (e) => {
+  const handleMapPress = useCallback((e) => {
     const coords = e.nativeEvent.coordinate;
     setDestCoords(coords);
     setDestination(`${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`);
     if (locationRef.current) {
       const dLat = (coords.latitude - locationRef.current.latitude) * Math.PI / 180;
       const dLon = (coords.longitude - locationRef.current.longitude) * Math.PI / 180;
-      const d = 6371 * 2 * Math.atan2(Math.sqrt(Math.sin(dLat/2)**2 + Math.cos(locationRef.current.latitude*Math.PI/180)*Math.cos(coords.latitude*Math.PI/180)*Math.sin(dLon/2)**2), Math.sqrt(1-(Math.sin(dLat/2)**2 + Math.cos(locationRef.current.latitude*Math.PI/180)*Math.cos(coords.latitude*Math.PI/180)*Math.sin(dLon/2)**2)));
+      const a = Math.sin(dLat/2)**2 + Math.cos(locationRef.current.latitude*Math.PI/180)*Math.cos(coords.latitude*Math.PI/180)*Math.sin(dLon/2)**2;
+      const d = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
       setPrice(Math.round((d * 8 + 15) * 2) / 2);
     }
-  };
+  }, []);
 
   const sendPaymentCode = async () => {
     try {
-      await axios.post(`${BASE_URL}/wallet/send-email`, { email: user.email }, { headers: { Authorization: `Bearer ${token}` } });
+      await apiClient.post('/wallet/send-email', { email: user.email });
       setCodeSent(true);
       Alert.alert('Başarılı', 'Doğrulama kodu e-postanıza gönderildi.');
     } catch (e) {
+      console.error('Kod gönderme hatası:', e);
       Alert.alert('Hata', 'Kod gönderilemedi.');
     }
   };
@@ -103,31 +109,34 @@ export default function HomeScreen() {
     setShowPaymentModal(false);
     
     try {
-      const res = await axios.post(`${BASE_URL}/bookings`, {
+      const res = await apiClient.post('/bookings', {
         userId: user.id, 
         driverId: selectedDriverId, 
         destination, 
         price, 
         bookingDate: new Date().toISOString()
-      }, { headers: { Authorization: `Bearer ${token}` } });
+      });
       
       if (res.data.success) {
         const bId = res.data.id;
         setLastBookingId(bId);
         
         if (method === 'Wallet') {
-          await axios.post(`${BASE_URL}/wallet/pay`, { 
+          await apiClient.post('/wallet/pay', { 
             userId: user.id, 
             bookingId: bId, 
             method: 'Wallet', 
             code: verificationCode 
-          }, { headers: { Authorization: `Bearer ${token}` } });
+          });
         }
         
         setBookingStatus('confirmed');
         Alert.alert('Başarılı', 'Yolculuk onaylandı! Sürücü yola çıktı.');
         
-        const socket = io(SOCKET_URL, { auth: { token } });
+        if (socketRef.current) socketRef.current.disconnect();
+        socketRef.current = io(SOCKET_URL, { auth: { token } });
+        const socket = socketRef.current;
+
         socket.on('driver:moved', (data) => {
           if (data.driverId === selectedDriverId && locationRef.current) {
             // Animasyonlu Güncelleme
@@ -161,10 +170,12 @@ export default function HomeScreen() {
           if (data.bookingId === bId && data.status === 'Tamamlandı') {
             setBookingStatus(null);
             setShowRatingModal(true);
+            socket.disconnect();
           }
         });
       }
     } catch (e) {
+      console.error('Rezervasyon hatası:', e);
       setBookingStatus(null);
       Alert.alert('Hata', e.response?.data?.error || 'İşlem sırasında bir hata oluştu.');
     }
@@ -172,15 +183,16 @@ export default function HomeScreen() {
 
   const submitRating = async () => {
     try {
-      await axios.post(`${BASE_URL}/bookings/ratings`, {
+      await apiClient.post('/bookings/ratings', {
         bookingId: lastBookingId, driverId: selectedDriverId, userId: user.id, score: rating
-      }, { headers: { Authorization: `Bearer ${token}` } });
+      });
       Alert.alert('Teşekkürler', 'Puanınız iletildi.');
       setShowRatingModal(false);
       setDestCoords(null);
       setDestination('');
       setBookingStatus(null);
     } catch (e) {
+      console.error('Puanlama hatası:', e);
       setShowRatingModal(false);
     }
   };
@@ -196,6 +208,9 @@ export default function HomeScreen() {
       locationRef.current = loc.coords;
     })();
     loadDrivers();
+    return () => {
+      if (socketRef.current) socketRef.current.disconnect();
+    };
   }, []);
 
   if (!location) {
@@ -282,15 +297,23 @@ export default function HomeScreen() {
               <View style={styles.priceBadge}><Text style={styles.priceVal}>₺{price.toFixed(2)}</Text></View>
             </View>
             <Text style={styles.subLabel}>Müsait Sürücüler</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginVertical:15}}>
-              {Array.isArray(drivers) && drivers.map(d => (
-                <TouchableOpacity key={d.id} onPress={() => setSelectedDriverId(d.id)} style={[styles.driverCard, selectedDriverId === d.id && styles.selected]}>
+            <FlatList
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              data={drivers}
+              keyExtractor={(item) => item.id.toString()}
+              style={{ marginVertical: 15 }}
+              renderItem={({ item: d }) => (
+                <TouchableOpacity 
+                  onPress={() => setSelectedDriverId(d.id)} 
+                  style={[styles.driverCard, selectedDriverId === d.id && styles.selected]}
+                >
                   <View style={styles.avatar}><Text style={styles.avatarText}>{d.name?.[0]}</Text></View>
                   <Text style={styles.driverName}>{d.name?.split(' ')[0]}</Text>
                   <Text style={styles.rating}>★ {d.avgScore?.toFixed(1) || '5.0'}</Text>
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
+              )}
+            />
             <TouchableOpacity 
               onPress={() => setShowPaymentModal(true)} 
               style={[styles.mainBtn, (!destCoords || !selectedDriverId) && styles.disabled]}
@@ -311,7 +334,7 @@ export default function HomeScreen() {
 
             {!codeSent ? (
               <View style={{ gap: 10, marginTop: 20 }}>
-                <TouchableOpacity style={styles.payBtnLarge} onPress={() => { try { axios.post(`${BASE_URL}/wallet/send-email`, { email: user.email }, { headers: { Authorization: `Bearer ${token}` } }); setCodeSent(true); } catch(e){} }}>
+                <TouchableOpacity style={styles.payBtnLarge} onPress={() => { try { apiClient.post('/wallet/send-email', { email: user.email }); setCodeSent(true); } catch(e){} }}>
                    <Ionicons name="wallet" size={24} color="#f59e0b" />
                    <Text style={styles.payBtnTextLarge}>Cüzdan (₺)</Text>
                 </TouchableOpacity>
@@ -423,7 +446,6 @@ const styles = StyleSheet.create({
   subLabel: { fontSize: 14, color: '#999', fontWeight: 'bold', textTransform: 'uppercase' },
   mainBtn: { backgroundColor: '#000', padding: 20, borderRadius: 18, alignItems: 'center' },
   mainBtnText: { color: '#f59e0b', fontWeight: 'bold', fontSize: 18 },
-  stationIcon: { backgroundColor: '#f59e0b', padding: 5, borderRadius: 8, borderWidth: 1, borderColor: '#000' },
   payRow: { flexDirection: 'row', gap: 10, marginVertical: 20 },
   payBtn: { flex: 1, padding: 15, borderRadius: 15, backgroundColor: '#f5f5f5', alignItems: 'center', gap: 5 },
   payActive: { backgroundColor: '#000' },

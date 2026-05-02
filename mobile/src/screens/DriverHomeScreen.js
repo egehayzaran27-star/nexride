@@ -3,9 +3,10 @@ import { View, StyleSheet, Text, Switch, ScrollView, TouchableOpacity, Alert, Ac
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { io } from 'socket.io-client';
-import axios from 'axios';
+import apiClient from '../api/client';
 import { useStore, BASE_URL, SOCKET_URL } from '../store/useStore';
 import { Ionicons } from '@expo/vector-icons';
+import { FlatList } from 'react-native-gesture-handler';
 
 export default function DriverHomeScreen() {
   const [location, setLocation] = useState(null);
@@ -16,6 +17,10 @@ export default function DriverHomeScreen() {
   const [stats, setStats] = useState({ dailyEarnings: 0, dailyTrips: 0, avgScore: 5.0, ratingCount: 0 });
   const [isSimulating, setIsSimulating] = useState(false);
   
+  const socketRef = useRef(null);
+  const locationSubRef = useRef(null);
+  const isOnlineRef = useRef(true);
+
   const token = useStore((state) => state.token);
   const user = useStore((state) => state.user);
 
@@ -23,21 +28,25 @@ export default function DriverHomeScreen() {
     if (!token) return;
     try {
       const [bookRes, statRes] = await Promise.all([
-        axios.get(`${BASE_URL}/bookings/all`, { headers: { Authorization: `Bearer ${token}` } }),
-        axios.get(`${BASE_URL}/drivers/stats`, { headers: { Authorization: `Bearer ${token}` } })
+        apiClient.get('/bookings/all'),
+        apiClient.get('/drivers/stats')
       ]);
       setBookings(bookRes.data.filter(b => b.status === 'Bekliyor' || b.driverId === user.id));
       setStats(statRes.data);
     } catch (error) {
       console.error('Veri çekme hatası:', error.response?.status, error.message);
-      if (error.response?.status === 401) Alert.alert('Oturum Hatası', 'Lütfen tekrar giriş yapın.');
     }
   }, [token, user.id]);
 
   const isSimulatingRef = useRef(false);
   
   useEffect(() => {
+    isOnlineRef.current = isOnline;
+  }, [isOnline]);
+
+  useEffect(() => {
     const socket = io(SOCKET_URL, { auth: { token } });
+    socketRef.current = socket;
     
     // Odaya katıl (Web ile Aynı Mantık)
     socket.emit('join', { userId: user.id, role: user.role, isDriver: true });
@@ -46,15 +55,15 @@ export default function DriverHomeScreen() {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') return;
       
-      Location.watchPositionAsync({
+      locationSubRef.current = await Location.watchPositionAsync({
         accuracy: Location.Accuracy.High,
-        timeInterval: 1000, // 1 saniyede bir güncelle (Takip için kritik)
-        distanceInterval: 1 // 1 metre hareket bile önemli
+        timeInterval: 2000, 
+        distanceInterval: 5
       }, (loc) => {
         if (!isSimulatingRef.current) {
           setLocation(loc.coords);
           locationRef.current = loc.coords;
-          if (isOnline) {
+          if (isOnlineRef.current) {
             socket.emit('driver:location-update', { 
               driverId: user.id, 
               lat: loc.coords.latitude, 
@@ -75,12 +84,11 @@ export default function DriverHomeScreen() {
     });
 
     fetchData();
-    const interval = setInterval(fetchData, 10000);
     return () => {
       socket.disconnect();
-      clearInterval(interval);
+      if (locationSubRef.current) locationSubRef.current.remove();
     };
-  }, [isOnline, fetchData, isSimulating]);
+  }, [fetchData]);
 
   const startSimulation = (targetLat, targetLng, bookingId) => {
     if (!locationRef.current) return;
@@ -111,8 +119,10 @@ export default function DriverHomeScreen() {
       setLocation(newPos);
       locationRef.current = newPos;
       
-      socket.emit('driver:location-update', { driverId: user.id, lat: currentLat, lng: currentLng });
-      socket.emit('driver:moved', { driverId: user.id, lat: currentLat, lng: currentLng });
+      if (socketRef.current) {
+        socketRef.current.emit('driver:location-update', { driverId: user.id, lat: currentLat, lng: currentLng });
+        socketRef.current.emit('driver:moved', { driverId: user.id, lat: currentLat, lng: currentLng });
+      }
       
       step++;
     }, 1500);
@@ -120,9 +130,9 @@ export default function DriverHomeScreen() {
 
   const updateStatus = async (bookingId, newStatus) => {
     try {
-      await axios.patch(`${BASE_URL}/bookings/${bookingId}/status`, { status: newStatus }, { headers: { Authorization: `Bearer ${token}` } });
+      await apiClient.patch(`/bookings/${bookingId}/status`, { status: newStatus });
       if (newStatus === 'Onaylandı') {
-         // Simülasyonu başlat (Hedef olarak müşteri konumu - şimdilik Ankara merkezi bir nokta veya rastgele)
+         // Simülasyonu başlat
          startSimulation(locationRef.current.latitude + 0.01, locationRef.current.longitude + 0.01, bookingId);
       }
       fetchData();
@@ -161,23 +171,28 @@ export default function DriverHomeScreen() {
 
         <View style={styles.list}>
           <Text style={styles.listTitle}>Yolculuklar {isSimulating && '(Simülasyon Aktif)'}</Text>
-          {bookings.map((item) => (
-            <View key={item.id} style={styles.card}>
-              <View style={styles.cardTop}>
-                <Text style={styles.custName}>{item.firstName} {item.lastName}</Text>
-                <Text style={styles.priceTag}>₺{item.price}</Text>
+          <FlatList
+            data={bookings}
+            keyExtractor={(item) => item.id.toString()}
+            scrollEnabled={false} // ScrollView içinde olduğu için
+            renderItem={({ item }) => (
+              <View key={item.id} style={styles.card}>
+                <View style={styles.cardTop}>
+                  <Text style={styles.custName}>{item.firstName} {item.lastName}</Text>
+                  <Text style={styles.priceTag}>₺{item.price}</Text>
+                </View>
+                <Text style={styles.destText}>📍 {item.destination}</Text>
+                <View style={styles.mainActions}>
+                  {item.status === 'Bekliyor' && (
+                    <TouchableOpacity style={[styles.actBtn, styles.accBtn]} onPress={() => updateStatus(item.id, 'Onaylandı')}>
+                      <Text style={styles.actText}>Kabul Et</Text>
+                    </TouchableOpacity>
+                  )}
+                  <Text style={{color:'#666', marginTop:10}}>{item.status}</Text>
+                </View>
               </View>
-              <Text style={styles.destText}>📍 {item.destination}</Text>
-              <View style={styles.mainActions}>
-                {item.status === 'Bekliyor' && (
-                  <TouchableOpacity style={[styles.actBtn, styles.accBtn]} onPress={() => updateStatus(item.id, 'Onaylandı')}>
-                    <Text style={styles.actText}>Kabul Et</Text>
-                  </TouchableOpacity>
-                )}
-                <Text style={{color:'#666', marginTop:10}}>{item.status}</Text>
-              </View>
-            </View>
-          ))}
+            )}
+          />
         </View>
       </ScrollView>
     </View>

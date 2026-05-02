@@ -1,13 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import axios from 'axios';
+import apiClient from '../api/client';
 import { useStore, THEME } from '../store/useStore';
 
-const BASE_URL = 'https://balmy-game-recount.ngrok-free.dev/api';
-
 export default function PaymentMethodsScreen() {
-  const { user, token } = useStore();
+  const user = useStore(s => s.user);
   const [methods, setMethods] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -21,16 +19,14 @@ export default function PaymentMethodsScreen() {
   const fetchMethods = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${BASE_URL}/wallet/payment-methods/${user.id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await apiClient.get(`/wallet/payment-methods/${user.id}`);
       setMethods(res.data || []);
     } catch (e) {
-      console.error('Ödeme yöntemleri yüklenemedi');
+      console.error('Ödeme yöntemleri yüklenemedi:', e);
     } finally {
       setLoading(false);
     }
-  }, [user.id, token]);
+  }, [user.id]);
 
   useEffect(() => { fetchMethods(); }, [fetchMethods]);
 
@@ -38,14 +34,15 @@ export default function PaymentMethodsScreen() {
     if (!cardName || !cardNumber || !expiry || !cvv) return Alert.alert('Hata', 'Tüm alanları doldurun.');
     
     try {
-      await axios.post(`${BASE_URL}/wallet/payment-methods`, {
+      await apiClient.post('/wallet/payment-methods', {
         userId: user.id, cardName, cardNumber, expiry, cvv
-      }, { headers: { Authorization: `Bearer ${token}` } });
+      });
       
       Alert.alert('Başarılı', 'Kartınız kaydedildi.');
       setShowModal(false);
       fetchMethods();
     } catch (e) {
+      console.error('Kart kaydetme hatası:', e);
       Alert.alert('Hata', 'Kart kaydedilemedi.');
     }
   };
@@ -55,11 +52,11 @@ export default function PaymentMethodsScreen() {
       { text: 'Vazgeç' },
       { text: 'Sil', onPress: async () => {
         try {
-          await axios.delete(`${BASE_URL}/wallet/payment-methods/${id}`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
+          await apiClient.delete(`/wallet/payment-methods/${id}`);
           fetchMethods();
-        } catch(e) {}
+        } catch(e) {
+          console.error('Kart silme hatası:', e);
+        }
       }}
     ]);
   };
