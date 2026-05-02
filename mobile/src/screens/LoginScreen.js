@@ -1,93 +1,86 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useStore } from '../store/useStore';
-import axios from 'axios';
-
-// Backend URL'ini kendi yerel IP'ne göre değiştir
-const API_URL = 'http://10.0.2.2:3000/api'; 
+import { authService } from '../api/client';
+import NexInput from '../components/NexInput';
+import NexButton from '../components/NexButton';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
   const setToken = useStore((state) => state.setToken);
   const setUser = useStore((state) => state.setUser);
 
   const handleLogin = async () => {
+    if (!email || !password) return Alert.alert('Hata', 'Lütfen tüm alanları doldurun.');
+    
+    setLoading(true);
     try {
-      const response = await axios.post(`${API_URL}/auth/login`, {
-        email,
-        password
-      });
-      
+      const response = await authService.login(email, password);
+      // Web ile aynı veri yapısını kaydet
       setToken(response.data.token);
       setUser(response.data.user);
       
-      // Navigate to Home
-      navigation.replace('Home');
+      Alert.alert('Giriş Başarılı', `Hoş geldin, ${response.data.user.firstName}!`);
+      navigation.replace('Main');
     } catch (error) {
-      Alert.alert('Hata', 'Giriş yapılamadı. Bilgilerinizi kontrol edin.');
+      Alert.alert('Hata', error.response?.data?.error || 'Giriş yapılamadı. Bilgilerinizi kontrol edin.');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>NexRide'a Hoş Geldiniz</Text>
-      
-      <TextInput
-        style={styles.input}
-        placeholder="E-posta"
-        value={email}
-        onChangeText={setEmail}
-        autoCapitalize="none"
-        keyboardType="email-address"
-      />
-      
-      <TextInput
-        style={styles.input}
-        placeholder="Şifre"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-      />
-      
-      <TouchableOpacity style={styles.button} onPress={handleLogin}>
-        <Text style={styles.buttonText}>Giriş Yap</Text>
-      </TouchableOpacity>
-    </View>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
+      <View style={styles.content}>
+        <View style={styles.header}>
+          <Ionicons name="car-sport" size={80} color="#f59e0b" />
+          <Text style={styles.title}>NexRide</Text>
+          <Text style={styles.subtitle}>Şehrin Yeni Nesil Ulaşım Ağı</Text>
+        </View>
+
+        <View style={styles.form}>
+          <NexInput
+            label="E-posta"
+            placeholder="ornek@email.com"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+          />
+          <NexInput
+            label="Şifre"
+            placeholder="••••••"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
+          
+          <NexButton 
+            title="Giriş Yap" 
+            onPress={handleLogin} 
+            loading={loading} 
+            style={{ marginTop: 10 }}
+          />
+
+          <NexButton 
+            title="Hesabınız yok mu? Kayıt Olun" 
+            variant="secondary"
+            onPress={() => navigation.navigate('Register')} 
+            style={{ marginTop: 15 }}
+          />
+        </View>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 20,
-    justifyContent: 'center',
-    backgroundColor: '#fff',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: 30,
-    textAlign: 'center',
-    color: '#333',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 15,
-    fontSize: 16,
-  },
-  button: {
-    backgroundColor: '#007AFF',
-    padding: 15,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
+  container: { flex: 1, backgroundColor: '#fff' },
+  content: { flex: 1, padding: 25, justifyContent: 'center' },
+  header: { alignItems: 'center', marginBottom: 40 },
+  title: { fontSize: 32, fontWeight: 'bold', color: '#000', marginTop: 10 },
+  subtitle: { fontSize: 16, color: '#666', marginTop: 5 },
+  form: { width: '100%' }
 });

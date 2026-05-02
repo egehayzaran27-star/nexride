@@ -97,3 +97,10 @@ Eğer herhangi bir uygulama indirmeden tarayıcı üzerinden bir panel görmek i
 Bunu yapmamı ister misiniz? Bu sayede http://localhost:8081 adresinden tüm verileri bir web arayüzü ile görebilirsiniz.
 
 ...............................................................
+
+TIP
+
+Ölçeklenebilirlik Notu: Mevcut sistem ücretsiz bir OSRM instance'ı kullanmaktadır. Çok yüksek trafikli bir üretim (production) ortamında kendi OSRM sunucunuzu Docker üzerinde kurmanız önerilir.
+
+...................................................................
+
