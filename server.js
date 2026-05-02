@@ -54,6 +54,7 @@ const bookingRoutes = require('./src/routes/booking.routes');
 const driverRoutes = require('./src/routes/driver.routes');
 const walletRoutes = require('./src/routes/wallet.routes');
 const adminRoutes = require('./src/routes/admin.routes');
+const mapsRoutes = require('./src/routes/maps.routes');
 const { errorHandler, notFoundHandler } = require('./src/middleware/error.middleware');
 const { initSocket } = require('./src/services/socket.service');
 
@@ -63,6 +64,7 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/drivers', driverRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api', adminRoutes);
+app.use('/api/maps', mapsRoutes);
 
 // Geriye dönük uyumluluk için ana dizindeki /api/send-email (eğer gerekirse)
 app.post('/api/send-email', (req, res) => res.redirect(307, '/api/wallet/send-email'));

@@ -111,18 +111,21 @@
                     </div>
 
                     <div id="priceCard"
-                        style="display: none; background: linear-gradient(to right, rgba(99, 102, 241, 0.2), rgba(192, 132, 252, 0.2)); padding: 20px; border-radius: 15px; margin-bottom: 20px; border: 1px solid var(--primary);">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <div>
-                                <div
-                                    style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">
-                                    Tahmini Ücret</div>
-                                <div id="estimatedPrice" style="font-size: 2rem; font-weight: 700; color: white;">₺0.00
-                                </div>
+                        style="background: linear-gradient(to right, rgba(99, 102, 241, 0.1), rgba(192, 132, 252, 0.1)); padding: 25px; border-radius: 20px; margin-bottom: 20px; border: 1px solid var(--border); transition: all 0.5s ease;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 20px;">
+                            <div id="priceInfoPlaceholder" style="flex: 1;">
+                                <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px;">Yolculuk Durumu</div>
+                                <div id="priceStatusText" style="font-size: 1.1rem; font-weight: 600; color: white;">🚩 Lütfen Varış Noktası Seçin</div>
                             </div>
-                            <button id="bookBtn" class="btn btn-primary"
-                                style="padding: 15px 30px; font-size: 1.1rem;">Yolculuğu Başlat <i
-                                    data-lucide="chevron-right"></i></button>
+                            <div id="priceInfoActual" style="display: none; flex: 1;">
+                                <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px;">Tahmini Ücret</div>
+                                <div id="estimatedPrice" style="font-size: 2.2rem; font-weight: 800; color: white; line-height: 1;">₺0.00</div>
+                            </div>
+                            <button id="bookBtn" class="btn btn-primary" disabled
+                                style="padding: 15px 35px; font-size: 1.2rem; min-width: 200px; opacity: 0.5; cursor: not-allowed;">
+                                <span id="bookBtnText">Hemen Çağır</span> 
+                                <i data-lucide="chevron-right"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -193,7 +196,7 @@
     </div>
 
     <script>
-        let map, startMarker, endMarker, lastBookingId = null, socket;
+        let map, startMarker, endMarker, lastBookingId = null, socket, driverMarkers = {};
         let selectedStation = null, selectedDistance = 0, currentPrice = 0, selectedDriverId = null;
         const TAXI_STATIONS = [
             { id: 1, name: "Kızılay Merkez Taksi", lat: 39.9208, lng: 32.8541 },
@@ -459,7 +462,17 @@
                     map.removeLayer(endMarker);
                     endMarker = null;
                     document.getElementById('destLocation').value = '';
-                    document.getElementById('priceCard').style.display = 'none';
+                    
+                    // UI Sıfırlama
+                    document.getElementById('priceInfoPlaceholder').style.display = 'block';
+                    document.getElementById('priceInfoActual').style.display = 'none';
+                    const btn = document.getElementById('bookBtn');
+                    btn.disabled = true;
+                    btn.style.opacity = '0.5';
+                    btn.style.cursor = 'not-allowed';
+                    document.getElementById('bookBtnText').textContent = 'Hemen Çağır';
+                    document.getElementById('priceCard').style.borderColor = 'var(--border)';
+                    
                     Store.showAlert('Yeni bir varış noktası seçebilirsiniz.', 'info');
                 }
             });
@@ -476,7 +489,18 @@
             currentPrice = Math.round((selectedDistance * 8 + 15) * 2) / 2;
             
             document.getElementById('estimatedPrice').textContent = Store.formatCurrency(currentPrice);
-            document.getElementById('priceCard').style.display = 'block';
+            
+            // UI Güncelleme
+            document.getElementById('priceInfoPlaceholder').style.display = 'none';
+            document.getElementById('priceInfoActual').style.display = 'block';
+            
+            const btn = document.getElementById('bookBtn');
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.style.cursor = 'pointer';
+            document.getElementById('bookBtnText').textContent = 'Yolculuğu Başlat';
+            
+            document.getElementById('priceCard').style.borderColor = 'var(--primary)';
         }
 
     async function loadDrivers() {
@@ -757,7 +781,12 @@
         document.getElementById('driverStatusTitle').textContent = 'Sürücü Yolda';
         document.getElementById('driverStatusInfo').textContent = 'Sizi almaya geliyor...';
         
-        await moveSimMarker(simTaxi, nearestStation, userPos, 30); // 30 km/h
+        // Rota Al
+        const route1Res = await Store.api(`/api/maps/route?startLat=${nearestStation.lat}&startLng=${nearestStation.lng}&endLat=${userPos.lat}&endLng=${userPos.lng}`);
+        const route1Data = await route1Res.json();
+        const route1Points = route1Data.route || [[nearestStation.lat, nearestStation.lng], [userPos.lat, userPos.lng]];
+
+        await moveSimMarkerOnRoute(simTaxi, route1Points, 120); // 120 km/h
 
         // AŞAMA 2: Yolcu Alındı -> Varış
         showToast('Sürücü ulaştı! Yolculuk başlıyor.', 'success');
@@ -767,7 +796,12 @@
         // Yolcu ikonunu gizle (taksiye bindi)
         if (startMarker) startMarker.getElement().style.opacity = '0';
 
-        await moveSimMarker(simTaxi, userPos, destPos, 30, true); // 30 km/h, passenger follows if needed
+        // Rota Al
+        const route2Res = await Store.api(`/api/maps/route?startLat=${userPos.lat}&startLng=${userPos.lng}&endLat=${destPos.lat}&endLng=${destPos.lng}`);
+        const route2Data = await route2Res.json();
+        const route2Points = route2Data.route || [[userPos.lat, userPos.lng], [destPos.lat, destPos.lng]];
+
+        await moveSimMarkerOnRoute(simTaxi, route2Points, 120, true); // 120 km/h
 
         document.getElementById('driverStatusTitle').textContent = 'Varıldı';
         document.getElementById('driverStatusInfo').textContent = 'Hedefe ulaşıldı.';
@@ -779,41 +813,70 @@
         setTimeout(() => {
             if (simTaxi) map.removeLayer(simTaxi);
             if (endMarker) map.removeLayer(endMarker);
-            if (startMarker) startMarker.getElement().style.opacity = '1';
+            if (startMarker) {
+                startMarker.getElement().style.opacity = '1';
+                startMarker.setLatLng(destPos); // Kullanıcı artık varış noktasında
+            }
             document.getElementById('driverStatusCard').style.display = 'none';
         }, 5000);
     }
 
-    function moveSimMarker(marker, start, end, speedKmh, moveUser = false) {
+    function moveSimMarkerOnRoute(marker, points, speedKmh, moveUser = false) {
         return new Promise(resolve => {
-            const speedMps = speedKmh * 1000 / 3600; 
-            const totalDist = calculateLiveDistance(start.lat, start.lng, end.lat, end.lng);
-            const duration = totalDist / speedMps; 
-            const fps = 30;
-            const totalFrames = Math.max(duration * fps, 1);
-            let frame = 0;
+            if (points.length < 2) return resolve();
 
-            const interval = setInterval(() => {
-                frame++;
-                const progress = Math.min(frame / totalFrames, 1);
+            let totalDist = 0;
+            let segmentDistances = [];
+            for (let i = 0; i < points.length - 1; i++) {
+                const d = calculateLiveDistance(points[i][0], points[i][1], points[i+1][0], points[i+1][1]);
+                segmentDistances.push(d);
+                totalDist += d;
+            }
 
-                const curLat = start.lat + (end.lat - start.lat) * progress;
-                const curLng = start.lng + (end.lng - start.lng) * progress;
-                const curPos = [curLat, curLng];
+            let lastTime = performance.now();
+            let distanceCovered = 0;
+            const speedMps = speedKmh * 1000 / 3600;
+
+            function animate(time) {
+                const deltaTime = (time - lastTime) / 1000;
+                lastTime = time;
+
+                distanceCovered += speedMps * deltaTime;
+                
+                document.getElementById('driverStatusInfo').textContent = `Yolculuk Devam Ediyor...`;
+
+                const progress = Math.min(distanceCovered / totalDist, 1);
+                
+                let accumulatedDist = 0;
+                let segmentIndex = 0;
+                for (let i = 0; i < segmentDistances.length; i++) {
+                    if (accumulatedDist + segmentDistances[i] >= distanceCovered) {
+                        segmentIndex = i;
+                        break;
+                    }
+                    accumulatedDist += segmentDistances[i];
+                }
+
+                const segmentProgress = segmentDistances[segmentIndex] === 0 ? 0 : (distanceCovered - accumulatedDist) / segmentDistances[segmentIndex];
+                const p1 = points[segmentIndex];
+                const p2 = points[segmentIndex + 1];
+
+                const curPos = [
+                    p1[0] + (p2[0] - p1[0]) * segmentProgress,
+                    p1[1] + (p2[1] - p1[1]) * segmentProgress
+                ];
 
                 marker.setLatLng(curPos);
                 if (moveUser && startMarker) startMarker.setLatLng(curPos);
 
-                // Mesafeyi güncelle
-                const remainingDist = totalDist * (1 - progress);
+                const remainingDist = Math.max(0, totalDist - distanceCovered);
                 const distText = remainingDist > 1000 ? (remainingDist/1000).toFixed(2) + ' km' : Math.round(remainingDist) + ' m';
                 document.getElementById('liveDistanceText').textContent = distText;
 
-                if (progress >= 1) {
-                    clearInterval(interval);
-                    resolve();
-                }
-            }, 1000 / fps);
+                if (progress < 1) requestAnimationFrame(animate); 
+                else resolve();
+            }
+            requestAnimationFrame(animate);
         });
     }
 

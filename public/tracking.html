@@ -271,7 +271,7 @@
                 })
             }).addTo(map);
 
-            const simulationSpeed = 80; // Hız 80 km/h yapıldı
+            const simulationSpeed = 120; // Hız 120 km/h yapıldı
 
             if (pickupMarker) {
                 document.getElementById('driverStatusTitle').textContent = 'Sürücü Yolda';
@@ -366,13 +366,19 @@
                 const endLng = end.lng || end[1];
 
                 const totalDist = calculateLiveDistance(startLat, startLng, endLat, endLng);
-                const duration = (totalDist / (speedKmh * 1000 / 3600)) * 1000; // ms
-                const startTime = performance.now();
+                let lastTime = performance.now();
+                let distanceCovered = 0;
+                const speedMps = speedKmh * 1000 / 3600;
 
-                function animate(currentTime) {
-                    const elapsed = currentTime - startTime;
-                    const progress = Math.min(elapsed / duration, 1);
+                function animate(time) {
+                    const deltaTime = (time - lastTime) / 1000;
+                    lastTime = time;
 
+                    distanceCovered += speedMps * deltaTime;
+                    
+                    document.getElementById('carInfo').textContent = `Yol Açık | İlerliyor`;
+
+                    const progress = Math.min(distanceCovered / totalDist, 1);
                     const curLat = startLat + (endLat - startLat) * progress;
                     const curLng = startLng + (endLng - startLng) * progress;
                     const curPos = [curLat, curLng];
@@ -382,7 +388,7 @@
                     
                     map.setView(curPos, map.getZoom(), { animate: false });
 
-                    const remainingDist = totalDist * (1 - progress);
+                    const remainingDist = Math.max(0, totalDist - distanceCovered);
                     const distText = remainingDist > 1000 ? (remainingDist/1000).toFixed(2) + ' km' : Math.round(remainingDist) + ' m';
                     document.getElementById('liveDistance').textContent = distText;
 

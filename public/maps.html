@@ -382,28 +382,36 @@
             // LocalStorage'dan kayıtlı ilerlemeyi kontrol et
             const savedState = JSON.parse(localStorage.getItem(`sim_state_${bookingId}`));
             
-            let start;
             let currentStage = (savedState && savedState.stage) || 1;
             let initialProgress = (savedState && savedState.progress) || 0;
 
+            const simId = 'sim_' + b.driverId;
+
             if (currentStage === 1) {
-                start = TAXI_STATIONS[0];
+                let start = TAXI_STATIONS[0];
                 let minDist = Infinity;
                 TAXI_STATIONS.forEach(s => {
                     const d = calculateLiveDistance(s.lat, s.lng, pickupPos.lat, pickupPos.lng);
                     if (d < minDist) { minDist = d; start = s; }
                 });
 
-                const simId = 'sim_' + b.driverId;
+                // GERÇEK YOL ROTASINI AL (Durak -> Yolcu)
+                const routeRes = await Store.api(`/api/maps/route?startLat=${start.lat}&startLng=${start.lng}&endLat=${pickupPos.lat}&endLng=${pickupPos.lng}`);
+                const routeData = await routeRes.json();
+                const routePoints = routeData.route || [[start.lat, start.lng], [pickupPos.lat, pickupPos.lng]];
+
                 updateDriverMarker({ driverId: simId, lat: start.lat, lng: start.lng, name: b.driverName, status: 'Yolda' });
                 const simMarker = driverMarkers[simId];
 
-                await move(simMarker, start, pickupPos, SIM_SPEED, false, 1, initialProgress);
+                // Rotayı haritada ince bir çizgi olarak göster (opsiyonel)
+                const polyline = L.polyline(routePoints, { color: 'var(--primary)', weight: 3, opacity: 0.3, dashArray: '5, 10' }).addTo(map);
+
+                await moveOnRoute(simMarker, routePoints, SIM_SPEED, false, 1, initialProgress);
                 
+                map.removeLayer(polyline);
                 currentStage = 2;
                 initialProgress = 0;
                 
-                // Bekleme Modu
                 showToast('Sürücü ulaştı! Sürüşü başlatın.', 'info');
                 document.getElementById('startRideBtn').style.display = 'block';
                 
@@ -413,17 +421,23 @@
             }
 
             if (currentStage === 2) {
-                const simId = 'sim_' + b.driverId;
                 const simMarker = driverMarkers[simId];
                 if (pickupMarker) pickupMarker.getElement().style.opacity = '0.3';
+
+                // GERÇEK YOL ROTASINI AL (Yolcu -> Hedef)
+                const routeRes = await Store.api(`/api/maps/route?startLat=${pickupPos.lat}&startLng=${pickupPos.lng}&endLat=${destPos.lat}&endLng=${destPos.lng}`);
+                const routeData = await routeRes.json();
+                const routePoints = routeData.route || [[pickupPos.lat, pickupPos.lng], [destPos.lat, destPos.lng]];
+
+                // Aktif rotayı çiz
+                const polyline = L.polyline(routePoints, { color: 'var(--primary)', weight: 5, opacity: 0.6 }).addTo(map);
                 
-                await move(simMarker, pickupPos, destPos, SIM_SPEED, true, 2, initialProgress);
+                await moveOnRoute(simMarker, routePoints, SIM_SPEED, true, 2, initialProgress);
                 
                 if (!window.isCancelled) {
                     showToast('Varıldı!', 'success');
                     localStorage.removeItem(`sim_state_${bookingId}`);
                     
-                    // İptal butonunu kaldır ve teşekkür mesajı göster
                     const actionContainer = document.getElementById('actionButtonsContainer');
                     if (actionContainer) {
                         actionContainer.innerHTML = `
@@ -440,7 +454,6 @@
                         lucide.createIcons();
                     }
 
-                    // Arka planda durumu güncelle
                     try {
                         await Store.api(`/api/bookings/${bookingId}/status`, {
                             method: 'PATCH',
@@ -453,27 +466,62 @@
             window.isSimulating = false;
         }
 
-        function move(marker, start, end, speed, movePass = false, stageNum, startProgress = 0) {
+        /**
+         * Verilen rota noktaları üzerinde marker'ı hareket ettirir.
+         */
+        function moveOnRoute(marker, points, speedKmh, movePass = false, stageNum, startProgress = 0) {
             return new Promise(resolve => {
-                const sLat = start.lat || start[0], sLng = start.lng || start[1];
-                const eLat = end.lat || end[0], eLng = end.lng || end[1];
-                const dist = calculateLiveDistance(sLat, sLng, eLat, eLng);
-                const duration = (dist / (speed * 1000 / 3600)) * 1000;
-                const startTime = performance.now() - (startProgress * duration);
+                if (points.length < 2) return resolve();
+
+                let totalDist = 0;
+                let segmentDistances = [];
+                for (let i = 0; i < points.length - 1; i++) {
+                    const d = calculateLiveDistance(points[i][0], points[i][1], points[i+1][0], points[i+1][1]);
+                    segmentDistances.push(d);
+                    totalDist += d;
+                }
+
+                let lastTime = performance.now();
+                let distanceCovered = totalDist * startProgress;
+                const speedMps = speedKmh * 1000 / 3600;
 
                 function animate(time) {
                     if (window.isCancelled) return resolve();
                     
-                    const progress = Math.min((time - startTime) / duration, 1);
-                    const cur = [sLat + (eLat - sLat) * progress, sLng + (eLng - sLng) * progress];
+                    const deltaTime = (time - lastTime) / 1000;
+                    lastTime = time;
+
+                    distanceCovered += speedMps * deltaTime;
+                    
+                    document.getElementById('routeInfo').textContent = 'Yolculuk Devam Ediyor...';
+
+                    const progress = Math.min(distanceCovered / totalDist, 1);
+                    
+                    let accumulatedDist = 0;
+                    let segmentIndex = 0;
+                    for (let i = 0; i < segmentDistances.length; i++) {
+                        if (accumulatedDist + segmentDistances[i] >= distanceCovered) {
+                            segmentIndex = i;
+                            break;
+                        }
+                        accumulatedDist += segmentDistances[i];
+                    }
+
+                    const segmentProgress = segmentDistances[segmentIndex] === 0 ? 0 : (distanceCovered - accumulatedDist) / segmentDistances[segmentIndex];
+                    const p1 = points[segmentIndex];
+                    const p2 = points[segmentIndex + 1];
+
+                    const cur = [
+                        p1[0] + (p2[0] - p1[0]) * segmentProgress,
+                        p1[1] + (p2[1] - p1[1]) * segmentProgress
+                    ];
                     
                     marker.setLatLng(cur);
                     if (movePass && pickupMarker) pickupMarker.setLatLng(cur);
                     
                     if (bookingId) {
                         map.setView(cur, map.getZoom(), { animate: false });
-                        // İlerlemeyi kaydet
-                        if (Math.random() > 0.95) { // Performans için her karede değil, ara ara kaydet
+                        if (Math.random() > 0.9) {
                             localStorage.setItem(`sim_state_${bookingId}`, JSON.stringify({
                                 stage: stageNum,
                                 progress: progress
@@ -481,17 +529,11 @@
                         }
                     }
                     
-                    const rem = dist * (1 - progress);
+                    const rem = Math.max(0, totalDist - distanceCovered);
                     document.getElementById('liveDist').textContent = rem > 1000 ? (rem/1000).toFixed(1) + ' km' : Math.round(rem) + ' m';
                     
                     if (progress < 1) requestAnimationFrame(animate); 
-                    else {
-                        localStorage.setItem(`sim_state_${bookingId}`, JSON.stringify({
-                            stage: stageNum,
-                            progress: 1
-                        }));
-                        resolve();
-                    }
+                    else resolve();
                 }
                 requestAnimationFrame(animate);
             });

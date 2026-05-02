@@ -1,5 +1,6 @@
 const socketIO = require('socket.io');
 const userDb = require('../../user-db');
+const mapsService = require('./maps.service');
 
 /**
  * Socket.io hizmetini başlatır ve olay dinleyicilerini kurar.
@@ -29,10 +30,29 @@ function initSocket(server) {
             }
         });
 
-        // Sürücü konum güncellemesi
+        // Sürücü konum güncellemesi (Yol Takip Sistemli)
         socket.on('driver:location-update', async (data) => {
             const { driverId, lat, lng } = data;
-            io.emit('driver:moved', { driverId, lat, lng });
+            
+            try {
+                // Konumu yola kilitle (Snap to Road)
+                const snapped = await mapsService.snapToRoad(lat, lng);
+                
+                // İşlenmiş konumu herkese yayınla
+                io.emit('driver:moved', { 
+                    driverId, 
+                    lat: snapped.lat, 
+                    lng: snapped.lng,
+                    rawLat: lat,   // Debug için ham veri
+                    rawLng: lng
+                });
+
+                // Veritabanını güncelle (Opsiyonel: Her saniye yerine belirli aralıklarla yapılabilir)
+                await userDb.updateDriverLocation(driverId, snapped.lat, snapped.lng);
+            } catch (error) {
+                // Hata durumunda ham veriyi yayınla (kesinti olmaması için)
+                io.emit('driver:moved', { driverId, lat, lng });
+            }
         });
 
         // Kullanıcı konum güncellemesi
