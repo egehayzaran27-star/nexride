@@ -56,14 +56,41 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.menu}>
-        <Text style={styles.menuTitle}>Hesap Ayarları</Text>
-        <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Kartlarım')}>
-          <Ionicons name="card-outline" size={20} color="#000" />
-          <Text style={styles.menuText}>Ödeme Yöntemlerim</Text>
-          <Ionicons name="chevron-forward" size={18} color="#ccc" />
-        </TouchableOpacity>
+        <Text style={styles.menuTitle}>Panel Değiştir</Text>
+        {(user?.role === 'driver' || user?.isDriver || user?.role === 'admin') && (
+          <>
+            <TouchableOpacity 
+              style={[styles.menuItem, { borderColor: '#f59e0b', borderWidth: 1 }]} 
+              onPress={() => navigation.navigate('DriverMain')}
+            >
+              <Ionicons name="speedometer-outline" size={20} color="#f59e0b" />
+              <Text style={[styles.menuText, { color: '#f59e0b' }]}>Sürücü Paneline Geç</Text>
+              <Ionicons name="chevron-forward" size={18} color="#f59e0b" />
+            </TouchableOpacity>
 
-        {user?.role === 'user' && (
+            <TouchableOpacity 
+              style={[styles.menuItem, { borderColor: '#3b82f6', borderWidth: 1, marginTop: 5 }]} 
+              onPress={() => navigation.navigate('Main')}
+            >
+              <Ionicons name="person-outline" size={20} color="#3b82f6" />
+              <Text style={[styles.menuText, { color: '#3b82f6' }]}>Yolcu Paneline Dön</Text>
+              <Ionicons name="chevron-forward" size={18} color="#3b82f6" />
+            </TouchableOpacity>
+          </>
+        )}
+
+        {(user?.role === 'admin' || user?.email === 'egehayzaran27@gmail.com' || user?.email === 'sıdkıhayzaran@gmail.com') && (
+          <TouchableOpacity 
+            style={[styles.menuItem, { borderColor: '#10b981', borderWidth: 1, marginTop: 5 }]} 
+            onPress={() => navigation.navigate('Admin')}
+          >
+            <Ionicons name="shield-checkmark-outline" size={20} color="#10b981" />
+            <Text style={[styles.menuText, { color: '#10b981' }]}>Yönetim Paneli (Admin)</Text>
+            <Ionicons name="chevron-forward" size={18} color="#10b981" />
+          </TouchableOpacity>
+        )}
+
+        {(user?.role !== 'driver' && !user?.isDriver && user?.role !== 'admin') && (
           <TouchableOpacity style={styles.menuItem} onPress={() => setShowApply(true)}>
             <Ionicons name="car-outline" size={20} color="#f59e0b" />
             <Text style={styles.menuText}>NexRide Sürücüsü Ol</Text>

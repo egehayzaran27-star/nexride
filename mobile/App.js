@@ -1,5 +1,6 @@
 import React from 'react';
 import { View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -13,6 +14,8 @@ import WalletScreen from './src/screens/WalletScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import AdminScreen from './src/screens/AdminScreen';
+import LiveMapScreen from './src/screens/LiveMapScreen';
+import NotificationScreen from './src/screens/NotificationScreen';
 import PaymentMethodsScreen from './src/screens/PaymentMethodsScreen';
 import { useStore } from './src/store/useStore';
 import { StatusBar } from 'expo-status-bar';
@@ -27,40 +30,55 @@ function MainTabs() {
     <Tab.Navigator screenOptions={{ 
       tabBarActiveTintColor: '#f59e0b', 
       tabBarInactiveTintColor: 'gray',
-      tabBarStyle: { backgroundColor: '#000', height: 60, paddingBottom: 10 }
+      tabBarStyle: { 
+        backgroundColor: '#000', 
+        height: 70, 
+        paddingBottom: 10,
+        borderTopWidth: 0,
+        elevation: 10
+      },
+      tabBarLabelStyle: { fontSize: 10, fontWeight: '600' }
     }}>
-      <Tab.Screen name="Ana Sayfa" component={HomeScreen} options={{ 
-        tabBarIcon: ({ color }) => <Ionicons name="home" size={24} color={color} />,
-        headerShown: false
-      }} />
       <Tab.Screen name="Cüzdan" component={WalletScreen} options={{ 
-        tabBarIcon: ({ color }) => <Ionicons name="wallet" size={24} color={color} />,
+        tabBarIcon: ({ color }) => <Ionicons name="wallet" size={22} color={color} />,
         headerTitle: 'Cüzdanım'
       }} />
-      <Tab.Screen name="Kartlarım" component={PaymentMethodsScreen} options={{ 
-        tabBarIcon: ({ color }) => <Ionicons name="card" size={24} color={color} />,
-        headerTitle: 'Ödeme Yöntemleri'
+      <Tab.Screen name="Bildirimler" component={NotificationScreen} options={{ 
+        tabBarIcon: ({ color }) => <Ionicons name="notifications" size={22} color={color} />,
+        headerTitle: 'Bildirimler'
       }} />
-      <Tab.Screen name="Geçmiş" component={HistoryScreen} options={{ 
-        tabBarIcon: ({ color }) => <Ionicons name="time" size={24} color={color} />,
-        headerTitle: 'Yolculuk Geçmişi'
+      <Tab.Screen name="Ana Sayfa" component={HomeScreen} options={{ 
+        tabBarLabel: () => null,
+        tabBarIcon: ({ color, focused }) => (
+          <View style={{
+            width: 60,
+            height: 60,
+            backgroundColor: '#f59e0b',
+            borderRadius: 30,
+            justifyContent: 'center',
+            alignItems: 'center',
+            marginBottom: 30,
+            borderWidth: 4,
+            borderColor: '#000',
+            elevation: 5,
+            shadowColor: '#f59e0b',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 5
+          }}>
+            <Ionicons name="home" size={28} color="#000" />
+          </View>
+        ),
+        headerShown: false
+      }} />
+      <Tab.Screen name="Canlı" component={LiveMapScreen} options={{ 
+        tabBarIcon: ({ color }) => <Ionicons name="map" size={22} color={color} />,
+        headerTitle: 'Canlı Harita'
       }} />
       <Tab.Screen name="Profil" component={ProfileScreen} options={{ 
-        tabBarIcon: ({ color }) => <Ionicons name="person" size={24} color={color} />,
+        tabBarIcon: ({ color }) => <Ionicons name="person" size={22} color={color} />,
         headerTitle: 'Profilim'
       }} />
-      {(user?.role === 'driver' || user?.isDriver) && (
-        <Tab.Screen name="Sürücü" component={DriverHomeScreen} options={{ 
-          tabBarIcon: ({ color }) => <Ionicons name="speedometer" size={24} color={color} />,
-          headerTitle: 'Sürücü Paneli'
-        }} />
-      )}
-      {user?.role === 'admin' && (
-        <Tab.Screen name="Admin" component={AdminScreen} options={{ 
-          tabBarIcon: ({ color }) => <Ionicons name="shield-checkmark" size={24} color={color} />,
-          headerTitle: 'Yönetim Paneli'
-        }} />
-      )}
     </Tab.Navigator>
   );
 }
@@ -95,27 +113,31 @@ export default function App() {
   const user = useStore((state) => state.user);
 
   return (
-    <SafeAreaProvider>
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f0f0' }}> 
-        <NavigationContainer>
-          <StatusBar style="dark" translucent={false} backgroundColor="#f0f0f0" />
-          <Stack.Navigator screenOptions={{ 
-            headerShown: false, 
-            contentStyle: { backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden' } 
-          }}>
-            {token == null ? (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f0f0' }}> 
+          <NavigationContainer>
+            <StatusBar style="dark" translucent={false} backgroundColor="#f0f0f0" />
+            <Stack.Navigator screenOptions={{ 
+              headerShown: false, 
+              contentStyle: { backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden' } 
+            }}>
+              {token == null ? (
               <>
                 <Stack.Screen name="Login" component={LoginScreen} />
                 <Stack.Screen name="Register" component={RegisterScreen} />
               </>
-            ) : user?.role === 'driver' ? (
-              <Stack.Screen name="DriverMain" component={DriverTabs} />
             ) : (
-              <Stack.Screen name="Main" component={MainTabs} />
+              <>
+                <Stack.Screen name="Main" component={MainTabs} />
+                <Stack.Screen name="DriverMain" component={DriverTabs} />
+                <Stack.Screen name="Admin" component={AdminScreen} options={{ headerShown: true, title: 'Yönetim Paneli' }} />
+              </>
             )}
-          </Stack.Navigator>
-        </NavigationContainer>
-      </SafeAreaView>
-    </SafeAreaProvider>
+            </Stack.Navigator>
+          </NavigationContainer>
+        </SafeAreaView>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

@@ -804,5 +804,32 @@ module.exports = {
         };
     },
 
+    // --- Bildirim Fonksiyonları ---
+    addNotification: (userId, message) => {
+        const query = db.prepare('INSERT INTO notifications (userId, message) VALUES (?, ?)');
+        return query.run(userId, message);
+    },
+
+    getNotificationsByUserId: (userId) => {
+        const query = db.prepare('SELECT * FROM notifications WHERE userId = ? ORDER BY created_at DESC LIMIT 20');
+        return query.all(userId);
+    },
+
+    markNotificationAsRead: (id) => {
+        const query = db.prepare('UPDATE notifications SET is_read = 1 WHERE id = ?');
+        return query.run(id);
+    },
+
+    markAllNotificationsAsRead: (userId) => {
+        const query = db.prepare('UPDATE notifications SET is_read = 1 WHERE userId = ?');
+        return query.run(userId);
+    },
+
+    // --- Konum Fonksiyonları ---
+    updateDriverLocation: (driverId, lat, lng) => {
+        const query = db.prepare('UPDATE drivers SET lat = ?, lng = ? WHERE id = ?');
+        return query.run(lat, lng, driverId);
+    },
+
     db, // Ham veritabanı erişimi (bakım için)
 };

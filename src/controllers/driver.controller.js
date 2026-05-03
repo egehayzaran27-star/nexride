@@ -14,6 +14,18 @@ class DriverController {
     }
 
     /**
+     * Tüm sürücüleri listeler
+     */
+    async getAll(req, res, next) {
+        try {
+            const drivers = await DriverRepository.findAll();
+            res.json(drivers);
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    /**
      * Sürücü istatistiklerini getirir
      */
     async getStats(req, res, next) {

@@ -13,6 +13,12 @@ router.delete('/users/:id', adminMiddleware, AdminController.deleteUser);
 // Rezervasyon Yönetimi
 router.get('/all-bookings', adminMiddleware, AdminController.getAllBookings);
 
+// Sistem Araçları
+router.post('/cleanup-drivers', adminMiddleware, AdminController.cleanupDrivers);
+router.post('/fix-prices', adminMiddleware, AdminController.updatePrices);
+router.post('/test-email', adminMiddleware, AdminController.testEmail);
+router.post('/promote', adminMiddleware, AdminController.promoteUser);
+
 // Profil Güncelleme (Auth katmanında da olabilir)
 router.patch('/users/:id', authMiddleware, async (req, res, next) => {
     try {

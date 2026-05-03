@@ -3,8 +3,29 @@ const router = express.Router();
 const mapsService = require('../services/maps.service');
 
 /**
+ * @route POST /api/maps/route
+ * @desc İki nokta arasındaki yol rotasını getirir (Mobil uyumlu)
+ */
+router.post('/route', async (req, res) => {
+    const { start, end } = req.body;
+
+    if (!start || !end) {
+        return res.status(400).json({ error: 'Eksik koordinat bilgisi.' });
+    }
+
+    try {
+        const route = await mapsService.getRoute(
+            [parseFloat(start.latitude), parseFloat(start.longitude)],
+            [parseFloat(end.latitude), parseFloat(end.longitude)]
+        );
+        res.json(route);
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
  * @route GET /api/maps/route
- * @desc İki nokta arasındaki yol rotasını getirir
  */
 router.get('/route', async (req, res) => {
     const { startLat, startLng, endLat, endLng } = req.query;

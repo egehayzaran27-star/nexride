@@ -25,9 +25,15 @@
                 <h1 style="text-align: left; margin-bottom: 5px; font-size: 2.5rem;">Sistem Dashboard</h1>
                 <p class="text-muted">Platformun genel durumu ve kullanıcı hareketlerini yönetin.</p>
             </div>
-            <div style="background: var(--glass-bg); padding: 10px 20px; border-radius: 12px; border: 1px solid var(--border); display: flex; align-items: center; gap: 10px;">
-                <div style="width: 10px; height: 10px; background: var(--success); border-radius: 50%; box-shadow: 0 0 10px var(--success);"></div>
-                <span style="font-size: 0.8rem; font-weight: 600;">Sistem Çalışıyor</span>
+            <div style="display: flex; gap: 10px;">
+                <div style="background: var(--glass-bg); padding: 10px 20px; border-radius: 12px; border: 1px solid var(--border); display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 10px; height: 10px; background: #34d399; border-radius: 50%; box-shadow: 0 0 10px #34d399;"></div>
+                    <span style="font-size: 0.8rem; font-weight: 600;">OSRM Sunucusu: Aktif</span>
+                </div>
+                <div style="background: var(--glass-bg); padding: 10px 20px; border-radius: 12px; border: 1px solid var(--border); display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 10px; height: 10px; background: var(--success); border-radius: 50%; box-shadow: 0 0 10px var(--success);"></div>
+                    <span style="font-size: 0.8rem; font-weight: 600;">Sistem Çalışıyor</span>
+                </div>
             </div>
         </div>
         
@@ -380,6 +386,19 @@
                     }, (err) => console.log('Admin konum hatası', err), { enableHighAccuracy: true });
                 }
             }
+
+            // OSRM Rota Çizme Fonksiyonu (Admin için)
+            window.drawRoute = async (start, end) => {
+                if (window.activeRoute) adminMap.removeLayer(window.activeRoute);
+                try {
+                    const res = await Store.api(`/api/maps/route?startLat=${start[0]}&startLng=${start[1]}&endLat=${end[0]}&endLng=${end[1]}`);
+                    const data = await res.json();
+                    if (data.success) {
+                        window.activeRoute = L.polyline(data.route, { color: '#f59e0b', weight: 5, opacity: 0.7 }).addTo(adminMap);
+                        adminMap.fitBounds(window.activeRoute.getBounds());
+                    }
+                } catch(e) {}
+            };
 
             // Fix map tiles for dark theme
             document.querySelector('#adminMap .leaflet-tile-pane').style.filter = 'brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7)';

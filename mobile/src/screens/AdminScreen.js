@@ -14,8 +14,8 @@ export default function AdminScreen() {
   const fetchData = useCallback(async () => {
     try {
       const [userRes, bookingRes] = await Promise.all([
-        apiClient.get('/users'),
-        apiClient.get('/all-bookings')
+        apiClient.get('/admin/users'),
+        apiClient.get('/admin/all-bookings')
       ]);
       setUsers(userRes.data);
       setBookings(bookingRes.data);
@@ -29,7 +29,7 @@ export default function AdminScreen() {
       { text: 'Vazgeç' },
       { text: 'Sil', onPress: async () => {
         try {
-          await apiClient.delete(`/users/${id}`);
+          await apiClient.delete(`/admin/users/${id}`);
           fetchData();
         } catch (e) { 
           console.error('Kullanıcı silme hatası:', e);
@@ -64,7 +64,7 @@ export default function AdminScreen() {
 
   const sendEmailTest = async () => {
     try {
-      await apiClient.post('/admin/test-email', {});
+      await apiClient.post('/api/admin/test-email', {});
       Alert.alert('Başarılı', 'Test e-postası gönderildi.');
     } catch(e) { 
       console.error('E-posta test hatası:', e);

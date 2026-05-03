@@ -55,6 +55,7 @@ export default function HomeScreen() {
   const [codeSent, setCodeSent] = useState(false);
   const [rating, setRating] = useState(5);
   const [lastBookingId, setLastBookingId] = useState(null);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const socketRef = useRef(null);
   const token = useStore((state) => state.token);
@@ -200,14 +201,44 @@ export default function HomeScreen() {
   const callDriver = () => Linking.openURL('tel:05000000000');
 
   useEffect(() => {
-    (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return;
-      let loc = await Location.getCurrentPositionAsync({});
-      setLocation(loc.coords);
-      locationRef.current = loc.coords;
-    })();
-    loadDrivers();
+    const getInitialData = async () => {
+      try {
+        // Konum alma (Zaman aşımı kontrolüyle)
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          console.warn('Konum izni reddedildi');
+          return;
+        }
+        
+        let loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+        setLocation(loc.coords);
+        locationRef.current = loc.coords;
+
+        // Gerçek zamanlı konum takibi (User's own location)
+        await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.BestForNavigation,
+            timeInterval: 1000,
+            distanceInterval: 1,
+          },
+          (newLoc) => {
+            setLocation(newLoc.coords);
+            locationRef.current = newLoc.coords;
+          }
+        );
+      } catch (err) {
+        console.error('Konum alınamadı:', err);
+        // Varsayılan bir konum set et (Örn: Ankara)
+        const defaultLoc = { latitude: 39.9208, longitude: 32.8541 };
+        setLocation(defaultLoc);
+        locationRef.current = defaultLoc;
+      } finally {
+        loadDrivers();
+      }
+    };
+
+    getInitialData();
+
     return () => {
       if (socketRef.current) socketRef.current.disconnect();
     };
@@ -265,6 +296,11 @@ export default function HomeScreen() {
         </MapView>
       )}
 
+      <View style={styles.osrmBadge}>
+         <View style={styles.osrmDot} />
+         <Text style={styles.osrmText}>OSRM Local</Text>
+      </View>
+
       <View style={styles.overlay}>
         {bookingStatus === 'confirmed' ? (
           <View style={styles.trackingCard}>
@@ -289,38 +325,52 @@ export default function HomeScreen() {
           </View>
         ) : (
           <View style={styles.panel}>
+            <TouchableOpacity 
+              style={styles.handleContainer} 
+              onPress={() => setIsExpanded(!isExpanded)}
+            >
+              <View style={styles.handle} />
+            </TouchableOpacity>
+
             <View style={styles.panelHeader}>
               <View>
                 <Text style={styles.panelTitle}>Nereye?</Text>
-                <Text style={styles.destText}>{destination || 'Haritadan bir yer seçin'}</Text>
+                <TouchableOpacity onPress={() => setIsExpanded(true)}>
+                  <Text style={styles.destText}>{destination || 'Haritadan bir yer seçin'}</Text>
+                </TouchableOpacity>
               </View>
               <View style={styles.priceBadge}><Text style={styles.priceVal}>₺{price.toFixed(2)}</Text></View>
             </View>
-            <Text style={styles.subLabel}>Müsait Sürücüler</Text>
-            <FlatList
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              data={drivers}
-              keyExtractor={(item) => item.id.toString()}
-              style={{ marginVertical: 15 }}
-              renderItem={({ item: d }) => (
+
+            {isExpanded && (
+              <>
+                <Text style={styles.subLabel}>Müsait Sürücüler</Text>
+                <FlatList
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  data={drivers}
+                  keyExtractor={(item) => item.id.toString()}
+                  style={{ marginVertical: 15 }}
+                  renderItem={({ item: d }) => (
+                    <TouchableOpacity 
+                      onPress={() => setSelectedDriverId(d.id)} 
+                      style={[styles.driverCard, selectedDriverId === d.id && styles.selected]}
+                    >
+                      <View style={styles.avatar}><Text style={styles.avatarText}>{d.name?.[0]}</Text></View>
+                      <Text style={styles.driverName}>{d.name?.split(' ')[0]}</Text>
+                      <Text style={styles.rating}>★ {d.avgScore?.toFixed(1) || '5.0'}</Text>
+                    </TouchableOpacity>
+                  )}
+                />
                 <TouchableOpacity 
-                  onPress={() => setSelectedDriverId(d.id)} 
-                  style={[styles.driverCard, selectedDriverId === d.id && styles.selected]}
+                  onPress={() => setShowPaymentModal(true)} 
+                  style={[styles.mainBtn, (!destCoords || !selectedDriverId) && styles.disabled]}
+                  disabled={!destCoords || !selectedDriverId}
                 >
-                  <View style={styles.avatar}><Text style={styles.avatarText}>{d.name?.[0]}</Text></View>
-                  <Text style={styles.driverName}>{d.name?.split(' ')[0]}</Text>
-                  <Text style={styles.rating}>★ {d.avgScore?.toFixed(1) || '5.0'}</Text>
+                    <Text style={styles.mainBtnText}>Yolculuğu Başlat</Text>
                 </TouchableOpacity>
-              )}
-            />
-            <TouchableOpacity 
-              onPress={() => setShowPaymentModal(true)} 
-              style={[styles.mainBtn, (!destCoords || !selectedDriverId) && styles.disabled]}
-              disabled={!destCoords || !selectedDriverId}
-            >
-                <Text style={styles.mainBtnText}>Yolculuğu Başlat</Text>
-            </TouchableOpacity>
+              </>
+            )}
           </View>
         )}
       </View>
@@ -439,8 +489,10 @@ const styles = StyleSheet.create({
   trackDivider: { width: 1, height: '100%', backgroundColor: '#444' },
   callBtn: { backgroundColor: '#f59e0b', flexDirection: 'row', padding: 18, borderRadius: 15, alignItems: 'center', justifyContent: 'center', gap: 10 },
   callBtnText: { color: '#000', fontWeight: 'bold', fontSize: 16 },
-  panel: { backgroundColor: '#fff', borderTopLeftRadius: 35, borderTopRightRadius: 35, padding: 25, elevation: 10 },
-  panelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
+  panel: { backgroundColor: '#fff', borderTopLeftRadius: 35, borderTopRightRadius: 35, padding: 20, paddingTop: 10, elevation: 10 },
+  handleContainer: { width: '100%', alignItems: 'center', paddingVertical: 10 },
+  handle: { width: 40, height: 5, backgroundColor: '#ddd', borderRadius: 3 },
+  panelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 5 },
   priceBadge: { backgroundColor: '#000', padding: 10, borderRadius: 12 },
   priceVal: { color: '#f59e0b', fontWeight: 'bold', fontSize: 18 },
   subLabel: { fontSize: 14, color: '#999', fontWeight: 'bold', textTransform: 'uppercase' },
@@ -454,5 +506,19 @@ const styles = StyleSheet.create({
   codeBtnText: { color: '#000', fontWeight: 'bold' },
   codeInput: { borderBottomWidth: 2, borderBottomColor: '#f59e0b', fontSize: 24, textAlign: 'center', padding: 10, letterSpacing: 5 },
   finalBtn: { backgroundColor: '#f59e0b', padding: 18, borderRadius: 15, alignItems: 'center' },
-  finalBtnText: { color: '#000', fontWeight: 'bold', fontSize: 16 }
+  finalBtnText: { color: '#000', fontWeight: 'bold', fontSize: 16 },
+  osrmBadge: { 
+    position: 'absolute', 
+    top: 50, 
+    right: 20, 
+    backgroundColor: 'rgba(0,0,0,0.6)', 
+    paddingHorizontal: 12, 
+    paddingVertical: 6, 
+    borderRadius: 20, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 6 
+  },
+  osrmDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#34d399' },
+  osrmText: { color: '#fff', fontSize: 10, fontWeight: 'bold' }
 });

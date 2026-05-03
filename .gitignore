@@ -5,3 +5,11 @@ sqlite.db
 passengers.json
 drivers.json
 .DS_Store
+osrm_data/
+*.db
+*.db-journal
+*.db-wal
+.expo/
+dist/
+web-build/
+

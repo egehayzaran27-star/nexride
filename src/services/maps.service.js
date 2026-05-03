@@ -6,9 +6,10 @@ const axios = require('axios');
  */
 class MapsService {
     constructor() {
-        // Public OSRM API (Geliştirme için)
-        // Production'da kendi OSRM sunucunuzu kurmanız önerilir.
-        this.osrmBaseUrl = 'https://router.project-osrm.org';
+        // Kendi OSRM sunucumuz (Docker üzerinden)
+        // Fallback olarak public API kullanılır
+        this.osrmBaseUrl = process.env.LOCAL_OSRM_URL || 'http://localhost:5000';
+        this.publicOsrmUrl = 'https://router.project-osrm.org';
     }
 
     /**
@@ -29,9 +30,17 @@ class MapsService {
                     lat: snapped[1]
                 };
             }
-            return { lat, lng }; // Hata durumunda ham veriyi dön
+            return { lat, lng };
         } catch (error) {
-            console.error('📍 SnapToRoad Hatası:', error.message);
+            // İlk deneme başarısızsa (Local kapalıysa) Public servisi dene
+            try {
+                const fallbackUrl = `${this.publicOsrmUrl}/nearest/v1/driving/${lng},${lat}?number=1`;
+                const res = await axios.get(fallbackUrl);
+                if (res.data?.waypoints?.[0]) {
+                    const s = res.data.waypoints[0].location;
+                    return { lng: s[0], lat: s[1] };
+                }
+            } catch (e) {}
             return { lat, lng };
         }
     }

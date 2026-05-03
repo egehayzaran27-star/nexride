@@ -23,9 +23,13 @@ function initSocket(server) {
             const { userId, role, isDriver } = data;
             if (userId) {
                 socket.join(`user-${userId}`);
+                socket.userId = userId;
+                
                 if (role === 'driver' || isDriver) {
                     socket.join('drivers-room');
+                    socket.isDriver = true;
                     console.log(`🚕 Sürücü odaya katıldı: ${userId}`);
+                    io.emit('driver:connected', { driverId: userId });
                 }
             }
         });
@@ -35,22 +39,16 @@ function initSocket(server) {
             const { driverId, lat, lng } = data;
             
             try {
-                // Konumu yola kilitle (Snap to Road)
                 const snapped = await mapsService.snapToRoad(lat, lng);
                 
-                // İşlenmiş konumu herkese yayınla
                 io.emit('driver:moved', { 
                     driverId, 
                     lat: snapped.lat, 
-                    lng: snapped.lng,
-                    rawLat: lat,   // Debug için ham veri
-                    rawLng: lng
+                    lng: snapped.lng
                 });
 
-                // Veritabanını güncelle (Opsiyonel: Her saniye yerine belirli aralıklarla yapılabilir)
                 await userDb.updateDriverLocation(driverId, snapped.lat, snapped.lng);
             } catch (error) {
-                // Hata durumunda ham veriyi yayınla (kesinti olmaması için)
                 io.emit('driver:moved', { driverId, lat, lng });
             }
         });
@@ -60,14 +58,23 @@ function initSocket(server) {
             io.emit('user:moved', data);
         });
 
-        // Rezervasyon talebi (Sürücülere yayınla)
+        // Bildirim gönderme
+        socket.on('send-notification', async (data) => {
+            const { userId, message } = data;
+            await userDb.addNotification(userId, message);
+            io.to(`user-${userId}`).emit('notification:new', { message });
+        });
+
+        // Rezervasyon talebi
         socket.on('booking:request', (bookingData) => {
             console.log('🔔 Yeni Rezervasyon Talebi:', bookingData.id);
-            // Tüm müsait sürücülere gönder
             io.to('drivers-room').emit('booking:new-request', bookingData);
         });
 
         socket.on('disconnect', () => {
+            if (socket.isDriver) {
+                io.emit('driver:disconnected', { driverId: socket.userId });
+            }
             console.log(`❌ Bağlantı Kesildi: ${socket.id}`);
         });
     });

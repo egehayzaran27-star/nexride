@@ -9,6 +9,13 @@ class DriverRepository {
     }
 
     /**
+     * Tüm sürücüleri ve puanlarını getirir
+     */
+    findAll() {
+        return userDb.getDriversWithAvgRatings();
+    }
+
+    /**
      * Koordinat bazlı yakın sürücüleri getirir
      */
     findNearby(lat, lng, radiusKm = 5) {
